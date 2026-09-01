@@ -170,12 +170,12 @@ public class SecurityConfig {
 
                 return http.build();
         }
-        /** Uploads: Static resources foto memo/bukti dapat diakses oleh mobile & web */
+        /** Uploads & Downloads: Static resources (foto memo/bukti, file update APK/MSIX) dapat diakses oleh mobile & web */
         @Bean
         @Order(3)
         public SecurityFilterChain uploadsSecurityFilterChain(HttpSecurity http) throws Exception {
                 http
-                                .securityMatcher("/uploads/**")
+                                .securityMatcher("/uploads/**", "/download/**")
                                 .cors(Customizer.withDefaults())
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth
