@@ -95,13 +95,19 @@ public class MemoService {
             memos = memoRepository.findAllByOrderByCreatedAtDesc();
         }
 
-        // ROLE-BASED FILTERING
+        // ROLE-BASED & SCOPE-BASED FILTERING
         String roleName = aktor.getRole() != null ? aktor.getRole().name() : "";
         String userEmpCode = aktor.getEmployeeCode(); 
+        java.util.Set<String> empScope = aktor.getEmpCodeAccess() != null ? aktor.getEmpCodeAccess() : java.util.Collections.emptySet();
 
-        if (roleName.startsWith("MARKETING_") || "MARKETING".equals(roleName)) {
-            // SPV roles see all memos — no filter applied (falls through like ADMIN)
-            if (!roleName.startsWith("SPV_")) {
+        if (aktor.getRole() == Role.SPV_MARKETING) {
+            // SPV MARKETING can see all marketing memos
+            memos = memos.stream()
+                    .filter(m -> m.getMarketingEmpCode() != null || 
+                            (m.getCreator() != null && m.getCreator().getRole() != null && 
+                             (m.getCreator().getRole().name().startsWith("MARKETING") || m.getCreator().getRole() == Role.SPV_MARKETING)))
+                    .collect(Collectors.toList());
+        } else if (roleName.startsWith("MARKETING_") || "MARKETING".equals(roleName)) {
             List<UUID> assignedMemoIds = penjadwalanRepo.findByPersonelIdAndDeletedAtIsNull(aktor.getId())
                     .stream()
                     .filter(t -> t.getMemo() != null)
@@ -110,21 +116,17 @@ public class MemoService {
 
             memos = memos.stream()
                     .filter(m -> {
-                        boolean isOwner = m.getMarketingEmpCode() != null && m.getMarketingEmpCode().equals(userEmpCode);
+                        boolean isOwner = (userEmpCode != null && !userEmpCode.isBlank() && userEmpCode.equalsIgnoreCase(m.getMarketingEmpCode()))
+                                || (m.getMarketingEmpCode() != null && empScope.stream().anyMatch(e -> e.equalsIgnoreCase(m.getMarketingEmpCode())));
                         boolean isCreator = m.getCreator() != null && m.getCreator().getId().equals(aktor.getId());
-                        boolean isSameRole = m.getCreator() != null && m.getCreator().getRole() == aktor.getRole();
                         boolean isAssigned = assignedMemoIds.contains(m.getId());
-                        boolean isCreatedBySpvMarketing = ("MARKETING_TOKO".equals(roleName) || "MARKETING_ONLINE".equals(roleName))
-                                && m.getCreator() != null
-                                && "SPV_MARKETING".equals(m.getCreator().getRole().name());
 
                         if (m.getStatusAkhir() == MemoStatus.DRAFT) {
-                            return isCreator || isSameRole || isCreatedBySpvMarketing;
+                            return isCreator;
                         }
-                        return isOwner || isCreator || isSameRole || isAssigned || isCreatedBySpvMarketing;
+                        return isOwner || isCreator || isAssigned;
                     })
                     .collect(Collectors.toList());
-            }
         } else if ("GUDANG".equals(roleName) || "SPV_GUDANG".equals(roleName)) {
             memos = memos.stream()
                     .filter(m -> 
@@ -195,28 +197,30 @@ public class MemoService {
         // Terapkan role-based filtering yang sama seperti getListMemoByStatus
         String roleName = aktor.getRole() != null ? aktor.getRole().name() : "";
         String userEmpCode = aktor.getEmployeeCode();
+        java.util.Set<String> empScope = aktor.getEmpCodeAccess() != null ? aktor.getEmpCodeAccess() : java.util.Collections.emptySet();
 
-        if (roleName.startsWith("MARKETING_") || "MARKETING".equals(roleName)) {
-            if (!roleName.startsWith("SPV_")) {
-                List<UUID> assignedMemoIds = penjadwalanRepo.findByPersonelIdAndDeletedAtIsNull(aktor.getId())
-                        .stream()
-                        .filter(t -> t.getMemo() != null)
-                        .map(t -> t.getMemo().getId())
-                        .collect(Collectors.toList());
+        if (aktor.getRole() == Role.SPV_MARKETING) {
+            memos = memos.stream()
+                    .filter(m -> m.getMarketingEmpCode() != null || 
+                            (m.getCreator() != null && m.getCreator().getRole() != null && 
+                             (m.getCreator().getRole().name().startsWith("MARKETING") || m.getCreator().getRole() == Role.SPV_MARKETING)))
+                    .collect(Collectors.toList());
+        } else if (roleName.startsWith("MARKETING_") || "MARKETING".equals(roleName)) {
+            List<UUID> assignedMemoIds = penjadwalanRepo.findByPersonelIdAndDeletedAtIsNull(aktor.getId())
+                    .stream()
+                    .filter(t -> t.getMemo() != null)
+                    .map(t -> t.getMemo().getId())
+                    .collect(Collectors.toList());
 
-                memos = memos.stream()
-                        .filter(m -> {
-                            boolean isOwner = m.getMarketingEmpCode() != null && m.getMarketingEmpCode().equals(userEmpCode);
-                            boolean isCreator = m.getCreator() != null && m.getCreator().getId().equals(aktor.getId());
-                            boolean isSameRole = m.getCreator() != null && m.getCreator().getRole() == aktor.getRole();
-                            boolean isAssigned = assignedMemoIds.contains(m.getId());
-                            boolean isCreatedBySpvMarketing = ("MARKETING_TOKO".equals(roleName) || "MARKETING_ONLINE".equals(roleName))
-                                    && m.getCreator() != null
-                                    && "SPV_MARKETING".equals(m.getCreator().getRole().name());
-                            return isOwner || isCreator || isSameRole || isAssigned || isCreatedBySpvMarketing;
-                        })
-                        .collect(Collectors.toList());
-            }
+            memos = memos.stream()
+                    .filter(m -> {
+                        boolean isOwner = (userEmpCode != null && !userEmpCode.isBlank() && userEmpCode.equalsIgnoreCase(m.getMarketingEmpCode()))
+                                || (m.getMarketingEmpCode() != null && empScope.stream().anyMatch(e -> e.equalsIgnoreCase(m.getMarketingEmpCode())));
+                        boolean isCreator = m.getCreator() != null && m.getCreator().getId().equals(aktor.getId());
+                        boolean isAssigned = assignedMemoIds.contains(m.getId());
+                        return isOwner || isCreator || isAssigned;
+                    })
+                    .collect(Collectors.toList());
         } else if ("DELIVERY".equals(roleName)) {
             List<UUID> assignedMemoIds = penjadwalanRepo.findByPersonelIdAndDeletedAtIsNull(aktor.getId())
                     .stream()
@@ -244,23 +248,27 @@ public class MemoService {
 
         String roleName = aktor.getRole() != null ? aktor.getRole().name() : "";
         String userEmpCode = aktor.getEmployeeCode();
+        java.util.Set<String> empScope = aktor.getEmpCodeAccess() != null ? aktor.getEmpCodeAccess() : java.util.Collections.emptySet();
+        List<String> empScopeList = new java.util.ArrayList<>(empScope);
+        boolean hasEmpScope = !empScopeList.isEmpty();
         List<Object[]> rawCounts = new java.util.ArrayList<>();
 
-        if (roleName.startsWith("MARKETING_") || "MARKETING".equals(roleName)) {
-            if (!roleName.startsWith("SPV_")) {
-                List<UUID> assignedMemoIds = penjadwalanRepo.findByPersonelIdAndDeletedAtIsNull(aktor.getId())
-                        .stream()
-                        .filter(t -> t.getMemo() != null)
-                        .map(t -> t.getMemo().getId())
-                        .collect(Collectors.toList());
+        if (aktor.getRole() == Role.SPV_MARKETING) {
+            List<Role> marketingRoles = java.util.Arrays.asList(
+                    Role.MARKETING, Role.MARKETING_TOKO, Role.MARKETING_PROJECT, 
+                    Role.MARKETING_DISTRIBUSI, Role.MARKETING_ONLINE, Role.SPV_MARKETING);
+            rawCounts = memoRepository.countStatusesForSpvMarketing(marketingRoles);
+        } else if (roleName.startsWith("MARKETING_") || "MARKETING".equals(roleName)) {
+            List<UUID> assignedMemoIds = penjadwalanRepo.findByPersonelIdAndDeletedAtIsNull(aktor.getId())
+                    .stream()
+                    .filter(t -> t.getMemo() != null)
+                    .map(t -> t.getMemo().getId())
+                    .collect(Collectors.toList());
 
-                if (assignedMemoIds.isEmpty()) {
-                    rawCounts = memoRepository.countStatusesForMarketingWithoutAssigned(userEmpCode, aktor.getId(), aktor.getRole());
-                } else {
-                    rawCounts = memoRepository.countStatusesForMarketingWithAssigned(userEmpCode, aktor.getId(), aktor.getRole(), assignedMemoIds);
-                }
+            if (assignedMemoIds.isEmpty()) {
+                rawCounts = memoRepository.countStatusesForMarketingWithoutAssigned(userEmpCode, hasEmpScope, empScopeList, aktor.getId());
             } else {
-                rawCounts = memoRepository.countAllStatuses();
+                rawCounts = memoRepository.countStatusesForMarketingWithAssigned(userEmpCode, hasEmpScope, empScopeList, aktor.getId(), assignedMemoIds);
             }
         } else if ("DELIVERY".equals(roleName)) {
             List<UUID> assignedMemoIds = penjadwalanRepo.findByPersonelIdAndDeletedAtIsNull(aktor.getId())
@@ -328,22 +336,8 @@ public class MemoService {
         User aktor = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User login tidak ditemukan"));
 
-        String roleName = aktor.getRole() != null ? aktor.getRole().name() : "";
-        String userEmpCode = aktor.getEmployeeCode();
-        
-        // MARKETING roles are allowed to access detail if they have the UUID (e.g. from QR scan)
-        // No restriction here for MARKETING.
-        if ("DELIVERY".equals(roleName)) {
-            List<PenjadwalanKonfirmasi> assignedTasks = penjadwalanRepo.findByPersonelIdAndDeletedAtIsNullOrderByCreatedAtDesc(aktor.getId());
-            boolean isAssigned = assignedTasks.stream()
-                .anyMatch(t -> t.getMemo() != null && t.getMemo().getId().equals(memoId));
-            if (!isAssigned) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Anda tidak memiliki akses ke memo ini karena tidak ditugaskan kepada Anda");
-            }
-        } else if ("TEKNISI".equals(roleName) || "SPV_TEKNISI".equals(roleName)) {
-            if (memo.getStatusAkhir() != MemoStatus.MENUNGGU_TEKNISI && memo.getStatusAkhir() != MemoStatus.PROSES_TEKNISI) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Anda tidak memiliki akses ke memo dengan status ini");
-            }
+        if (!canUserReadMemo(memo, aktor)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Anda tidak memiliki akses ke memo ini");
         }
 
         return WebResponse.<MemoDetailResponse>builder()
@@ -351,6 +345,80 @@ public class MemoService {
                 .message("Success")
                 .data(mapToDetailResponse(memo))
                 .build();
+    }
+
+    public boolean canUserReadMemo(Memo memo, User aktor) {
+        if (aktor == null || memo == null) return false;
+
+        // Only ADMIN and MANAGER have access to all memos
+        if (aktor.getRole() == Role.ADMIN || aktor.getRole() == Role.MANAGER) {
+            return true;
+        }
+
+        // Creator can always read
+        if (memo.getCreator() != null && memo.getCreator().getId().equals(aktor.getId())) {
+            return true;
+        }
+
+        // SPV_MARKETING can read any marketing memo
+        if (aktor.getRole() == Role.SPV_MARKETING) {
+            return memo.getMarketingEmpCode() != null || 
+                   (memo.getCreator() != null && memo.getCreator().getRole() != null && 
+                    (memo.getCreator().getRole().name().startsWith("MARKETING") || memo.getCreator().getRole() == Role.SPV_MARKETING));
+        }
+
+        // Owner by marketing emp code or emp code scope
+        String userEmpCode = aktor.getEmployeeCode();
+        java.util.Set<String> empScope = aktor.getEmpCodeAccess() != null ? aktor.getEmpCodeAccess() : java.util.Collections.emptySet();
+        if (memo.getMarketingEmpCode() != null) {
+            if (userEmpCode != null && !userEmpCode.isBlank() && memo.getMarketingEmpCode().equalsIgnoreCase(userEmpCode)) {
+                return true;
+            }
+            if (empScope.stream().anyMatch(e -> e.equalsIgnoreCase(memo.getMarketingEmpCode()))) {
+                return true;
+            }
+        }
+
+        // Delivery personnel assigned to deliver this memo
+        if (aktor.getRole() == Role.DELIVERY) {
+            List<PenjadwalanKonfirmasi> assignedTasks = penjadwalanRepo.findByPersonelIdAndDeletedAtIsNullOrderByCreatedAtDesc(aktor.getId());
+            return assignedTasks.stream().anyMatch(t -> t.getMemo() != null && t.getMemo().getId().equals(memo.getId()));
+        }
+
+        // Warehouse personnel processing warehouse statuses
+        if (aktor.getRole() == Role.GUDANG || aktor.getRole() == Role.SPV_GUDANG) {
+            MemoStatus st = memo.getStatusAkhir();
+            return st != null && (
+                st == MemoStatus.PENDING ||
+                st == MemoStatus.MENUNGGU_PERSETUJUAN ||
+                st == MemoStatus.DISETUJUI ||
+                st == MemoStatus.DITOLAK ||
+                st == MemoStatus.MENUNGGU_GUDANG ||
+                st == MemoStatus.MENUNGGU_NOTA ||
+                st == MemoStatus.KENDALA_BARANG ||
+                st == MemoStatus.MENUNGGU_TEKNISI ||
+                st == MemoStatus.PROSES_TEKNISI ||
+                st == MemoStatus.BUFFER_ZONE ||
+                st == MemoStatus.MENUNGGU_PENGIRIMAN ||
+                st == MemoStatus.DALAM_PENGIRIMAN ||
+                st == MemoStatus.TERKIRIM_SEBAGIAN ||
+                st == MemoStatus.SELESAI
+            );
+        }
+
+        // Technician processing technician statuses
+        if (aktor.getRole() == Role.TEKNISI || aktor.getRole() == Role.SPV_TEKNISI) {
+            MemoStatus st = memo.getStatusAkhir();
+            return st == MemoStatus.MENUNGGU_TEKNISI || st == MemoStatus.PROSES_TEKNISI;
+        }
+
+        // Nota processing nota status
+        if (aktor.getRole() == Role.NOTA) {
+            return memo.getStatusAkhir() == MemoStatus.MENUNGGU_NOTA;
+        }
+
+        // Different role cannot read
+        return false;
     }
 
     private List<MemoDetailResponse> mapToDetailResponses(List<Memo> memos) {

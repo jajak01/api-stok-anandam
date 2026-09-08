@@ -124,4 +124,35 @@ public class UserController {
 
                 return ResponseEntity.ok(response);
         }
+
+        @GetMapping("/{id}/emp-scope")
+        public ResponseEntity<WebResponse<java.util.Set<String>>> getUserEmpScope(@PathVariable(name = "id") Long id) {
+                java.util.Set<String> scope = userService.getUserEmpScope(id);
+
+                WebResponse<java.util.Set<String>> response = WebResponse.<java.util.Set<String>>builder()
+                                .status(HttpStatus.OK.value())
+                                .message("Success fetch user emp scope")
+                                .data(scope)
+                                .paging(null)
+                                .build();
+
+                return ResponseEntity.ok(response);
+        }
+
+        @PutMapping("/{id}/emp-scope")
+        @LogActivity("UPDATE EMP SCOPE USER")
+        public ResponseEntity<WebResponse<UserResponse>> updateUserEmpScope(
+                        @PathVariable(name = "id") Long id,
+                        @RequestBody java.util.Set<String> empScope) {
+                UserResponse userResponse = userService.updateUserEmpScope(id, empScope);
+
+                WebResponse<UserResponse> response = WebResponse.<UserResponse>builder()
+                                .status(HttpStatus.OK.value())
+                                .message("User emp scope updated successfully")
+                                .data(userResponse)
+                                .paging(null)
+                                .build();
+
+                return ResponseEntity.ok(response);
+        }
 }

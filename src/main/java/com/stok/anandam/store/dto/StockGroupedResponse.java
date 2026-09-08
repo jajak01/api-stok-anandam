@@ -21,6 +21,7 @@ public class StockGroupedResponse {
     private String kategoriItemcode;
     private Integer totalStok;
     private BigDecimal hargaHpp;
+    private BigDecimal hargaButtom;
     private BigDecimal grandTotal;
     private String spesifikasi;
     private BigDecimal modal;

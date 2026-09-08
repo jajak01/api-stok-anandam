@@ -124,6 +124,21 @@ public class AuthController {
                                 .build());
         }
 
+        @PostMapping("/heartbeat")
+        public ResponseEntity<WebResponse<String>> heartbeat() {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated() && !auth.getName().equals("anonymousUser")) {
+                        userService.processHeartbeat(auth.getName());
+                }
+
+                return ResponseEntity.ok(WebResponse.<String>builder()
+                                .status(200)
+                                .message("Heartbeat OK")
+                                .data("OK")
+                                .paging(null)
+                                .build());
+        }
+
         @PostMapping("/change-password")
         @LogActivity("USER GANTI PASSWORD SENDIRI")
         public ResponseEntity<WebResponse<String>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {

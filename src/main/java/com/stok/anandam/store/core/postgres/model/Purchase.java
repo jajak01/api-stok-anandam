@@ -61,6 +61,12 @@ public class Purchase {
     @Column(name = "emp_name")
     private String empName;
 
+    @Column(name = "paid_total", precision = 19, scale = 2)
+    private BigDecimal paidTotal;
+
+    @Column(name = "status_bayar", length = 20)
+    private String statusBayar;
+
     @Column(name = "last_synced")
     private LocalDateTime lastSynced;
 }

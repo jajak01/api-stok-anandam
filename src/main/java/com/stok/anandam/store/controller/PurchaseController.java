@@ -22,6 +22,7 @@ public class PurchaseController {
 
         @GetMapping
         public ResponseEntity<WebResponse<PurchaseSummaryResponse<Purchase>>> getPurchases(
+                        java.security.Principal principal,
                         @RequestParam(name = "page", defaultValue = "0") int page,
                         @RequestParam(name = "size", defaultValue = "10") int size,
                         @RequestParam(name = "sortBy", defaultValue = "docDate") String sortBy,
@@ -43,10 +44,11 @@ public class PurchaseController {
                         if (empCodes.isEmpty()) empCodes = null;
                 }
 
+                String username = principal != null ? principal.getName() : null;
                 PurchaseSummaryResponse<Purchase> data = purchaseService.getPurchases(
-                                page, size, sortBy, dir, startDate, endDate, empCodes, categories, search, searchColumn);
+                                page, size, sortBy, dir, startDate, endDate, empCodes, categories, search, searchColumn, username);
                 if (data.getContent().isEmpty() && data.getTotalElements() > 0 && page > 0) {
-                        data = purchaseService.getPurchases(0, size, sortBy, dir, startDate, endDate, empCodes, categories, search, searchColumn);
+                        data = purchaseService.getPurchases(0, size, sortBy, dir, startDate, endDate, empCodes, categories, search, searchColumn, username);
                         page = 0;
                 }
 

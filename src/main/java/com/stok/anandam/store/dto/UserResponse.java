@@ -21,4 +21,7 @@ public class UserResponse {
     private Boolean isOnline;
     private Integer deviceCount;
     private String noHp;
+    private java.util.Set<String> permissions;
+    private java.util.Set<String> empCodeAccess;
+    private java.time.LocalDateTime sessionsRevokedAt;
 }

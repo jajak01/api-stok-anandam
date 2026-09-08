@@ -30,6 +30,7 @@ public class SalesController {
 
         @GetMapping
         public ResponseEntity<WebResponse<SalesSummaryResponse<Sales>>> getAllSales(
+                        java.security.Principal principal,
                         @RequestParam(name = "page", defaultValue = "0") int page,
                         @RequestParam(name = "size", defaultValue = "10") int size,
                         @RequestParam(name = "sortBy", defaultValue = "docDate") String sortBy,
@@ -52,9 +53,11 @@ public class SalesController {
                 }
 
                 SalesSummaryResponse<Sales> data = salesService.getSales(
-                                page, size, sortBy, direction, startDate, endDate, empCodes, categories, search, searchColumn);
+                                page, size, sortBy, direction, startDate, endDate, empCodes, categories, search, searchColumn,
+                                principal != null ? principal.getName() : null);
                 if (data.getContent().isEmpty() && data.getTotalElements() > 0 && page > 0) {
-                        data = salesService.getSales(0, size, sortBy, direction, startDate, endDate, empCodes, categories, search, searchColumn);
+                        data = salesService.getSales(0, size, sortBy, direction, startDate, endDate, empCodes, categories, search, searchColumn,
+                                        principal != null ? principal.getName() : null);
                         page = 0;
                 }
 
@@ -98,6 +101,7 @@ public class SalesController {
         // Laporan Profitabilitas Penjualan (HPP & Laba Kotor per barang)
         @GetMapping({ "/profitabilitas", "/profitability" })
         public ResponseEntity<WebResponse<ProfitabilityResponse<ProfitabilityRowResponse>>> getProfitability(
+                        java.security.Principal principal,
                         @RequestParam(name = "startDate", required = false) String startDate,
                         @RequestParam(name = "endDate", required = false) String endDate,
                         @RequestParam(name = "empCode", required = false) String empCode,
@@ -115,7 +119,8 @@ public class SalesController {
                 }
 
                 ProfitabilityResponse<ProfitabilityRowResponse> data = salesService.getProfitability(
-                                startDate, endDate, empCodes, categories, search, searchColumn);
+                                startDate, endDate, empCodes, categories, search, searchColumn,
+                                principal != null ? principal.getName() : null);
 
                 return ResponseEntity.ok(WebResponse.<ProfitabilityResponse<ProfitabilityRowResponse>>builder()
                                 .status(200)
@@ -130,6 +135,7 @@ public class SalesController {
 
         @GetMapping("/export")
         public ResponseEntity<org.springframework.core.io.Resource> exportToExcel(
+                        java.security.Principal principal,
                         @RequestParam(name = "startDate", required = false) String startDate,
                         @RequestParam(name = "endDate", required = false) String endDate,
                         @RequestParam(name = "empCode", required = false) String empCode,
@@ -147,7 +153,8 @@ public class SalesController {
                         if (empCodes.isEmpty()) empCodes = null;
                 }
 
-                java.util.List<Sales> data = salesService.getAllSalesForExport(startDate, endDate, empCodes, categories, search, searchColumn);
+                java.util.List<Sales> data = salesService.getAllSalesForExport(startDate, endDate, empCodes, categories, search, searchColumn,
+                                principal != null ? principal.getName() : null);
                 byte[] bytes = excelExportService.exportSalesToExcel(data);
 
                 String filename = "sales_" + java.time.LocalDate.now() + ".xlsx";

@@ -21,4 +21,10 @@ public class UserRequest {
     private Role role;
 
     private String noHp;
+
+    private String employeeCode;
+
+    private java.util.Set<String> empCodeAccess;
+
+    private java.util.Set<String> permissions;
 }

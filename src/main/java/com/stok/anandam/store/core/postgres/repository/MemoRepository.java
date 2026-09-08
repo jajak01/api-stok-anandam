@@ -49,26 +49,33 @@ public interface MemoRepository extends JpaRepository<Memo, UUID> {
     List<Object[]> countAllStatuses();
 
     @Query("SELECT m.statusAkhir, COUNT(m.id) FROM Memo m WHERE " +
-           "m.marketingEmpCode = :empCode OR " +
+           "(m.marketingEmpCode = :empCode OR (:hasEmpScope = true AND m.marketingEmpCode IN :empCodes) OR " +
            "m.creator.id = :userId OR " +
-           "m.creator.role = :role OR " +
-           "m.id IN :assignedMemoIds " +
+           "m.id IN :assignedMemoIds) " +
            "GROUP BY m.statusAkhir")
     List<Object[]> countStatusesForMarketingWithAssigned(
             @Param("empCode") String empCode, 
+            @Param("hasEmpScope") boolean hasEmpScope,
+            @Param("empCodes") List<String> empCodes,
             @Param("userId") Long userId, 
-            @Param("role") com.stok.anandam.store.core.postgres.model.Role role,
             @Param("assignedMemoIds") List<UUID> assignedMemoIds);
 
     @Query("SELECT m.statusAkhir, COUNT(m.id) FROM Memo m WHERE " +
-           "m.marketingEmpCode = :empCode OR " +
-           "m.creator.id = :userId OR " +
-           "m.creator.role = :role " +
+           "(m.marketingEmpCode = :empCode OR (:hasEmpScope = true AND m.marketingEmpCode IN :empCodes) OR " +
+           "m.creator.id = :userId) " +
            "GROUP BY m.statusAkhir")
     List<Object[]> countStatusesForMarketingWithoutAssigned(
             @Param("empCode") String empCode, 
-            @Param("userId") Long userId, 
-            @Param("role") com.stok.anandam.store.core.postgres.model.Role role);
+            @Param("hasEmpScope") boolean hasEmpScope,
+            @Param("empCodes") List<String> empCodes,
+            @Param("userId") Long userId);
+
+    @Query("SELECT m.statusAkhir, COUNT(m.id) FROM Memo m WHERE " +
+           "m.marketingEmpCode IS NOT NULL OR " +
+           "(m.creator.role IN :marketingRoles) " +
+           "GROUP BY m.statusAkhir")
+    List<Object[]> countStatusesForSpvMarketing(
+            @Param("marketingRoles") List<com.stok.anandam.store.core.postgres.model.Role> marketingRoles);
 
     @Query("SELECT m.statusAkhir, COUNT(m.id) FROM Memo m WHERE m.id IN :assignedMemoIds GROUP BY m.statusAkhir")
     List<Object[]> countStatusesForDelivery(@Param("assignedMemoIds") List<UUID> assignedMemoIds);

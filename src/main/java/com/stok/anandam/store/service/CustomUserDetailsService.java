@@ -1,5 +1,6 @@
 package com.stok.anandam.store.service;
 
+import com.stok.anandam.store.core.postgres.model.DefaultRolePermissions;
 import com.stok.anandam.store.core.postgres.model.Role;
 import com.stok.anandam.store.core.postgres.model.User;
 import com.stok.anandam.store.core.postgres.repository.UserRepository;
@@ -10,9 +11,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -27,21 +26,27 @@ public class CustomUserDetailsService implements UserDetailsService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User tidak ditemukan: " + username));
 
-        // 2. Terjemahkan Role (Enum) ke Authority Spring Security
-        // Format standar Spring Security untuk role adalah "ROLE_NAMA"
-        List<SimpleGrantedAuthority> authorities;
-        if (user.getRole() == Role.MANAGER) {
-            // MANAGER = peran tertinggi, akses penuh (tanpa batasan).
-            // Berikan SEMUA authority role sehingga lolos seluruh gate hasAnyAuthority
-            // di SecurityConfig tanpa harus menambahkan ROLE_MANAGER ke tiap daftar role.
-            // ROLE_MANAGER ikut termasuk, sehingga endpoint yang khusus ROLE_MANAGER
-            // (mis. laporan omset marketing) tetap hanya bisa diakses Manager.
-            authorities = Arrays.stream(Role.values())
+        // 2. Terjemahkan Role & Permissions ke Authority Spring Security
+        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+        if (user.getRole() == Role.MANAGER || user.getRole() == Role.ADMIN) {
+            // MANAGER & ADMIN = akses penuh, semua role & semua permission
+            Arrays.stream(Role.values())
                     .map(r -> new SimpleGrantedAuthority("ROLE_" + r.name()))
-                    .collect(Collectors.toList());
+                    .forEach(authorities::add);
+            DefaultRolePermissions.getAllPermissions().stream()
+                    .map(SimpleGrantedAuthority::new)
+                    .forEach(authorities::add);
         } else {
-            authorities = Collections.singletonList(
-                    new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
+            authorities.add(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
+            Set<String> perms = user.getPermissions();
+            if (perms == null || perms.isEmpty()) {
+                perms = DefaultRolePermissions.getDefaultPermissions(user.getRole());
+            }
+            if (perms != null) {
+                perms.stream()
+                        .map(SimpleGrantedAuthority::new)
+                        .forEach(authorities::add);
+            }
         }
 
         // 3. Kembalikan object User milik Spring Security (bukan User entity kita)

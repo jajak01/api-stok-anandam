@@ -127,21 +127,23 @@ public class SecurityConfig {
                                         // PRINTER: Wajib login (membawa token) agar tidak bisa print spam dari luar
                                         .requestMatchers("/api/v1/printer/**").authenticated()
 
-                                        // REVISI: Pastikan endpoint stok bisa diakses operasional
-                                        .requestMatchers("/api/v1/stock", "/api/v1/stock/**", "/api/v1/stocks", "/api/v1/stocks/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_DELIVERY", "ROLE_TEKNISI", "ROLE_NOTA")
-                                        .requestMatchers("/api/sn", "/api/sn/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_TEKNISI", "ROLE_DELIVERY", "ROLE_NOTA")
+                                        // STOK & SN
+                                        // Mengubah persen hargaButtom: hanya ADMIN/MANAGER (dicek SEBELUM matcher stocks umum di bawah)
+                                        .requestMatchers(HttpMethod.PUT, "/api/v1/stocks/harga-buttom-percent", "/api/v1/stock/harga-buttom-percent").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER")
+                                        .requestMatchers("/api/v1/stock", "/api/v1/stock/**", "/api/v1/stocks", "/api/v1/stocks/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "STOK", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_DELIVERY", "ROLE_TEKNISI", "ROLE_NOTA")
+                                        .requestMatchers("/api/sn", "/api/sn/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "ITEM_SN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_TEKNISI", "ROLE_DELIVERY", "ROLE_NOTA")
 
                                         // PENJADWALAN
                                         .requestMatchers(HttpMethod.GET, "/api/v1/penjadwalan", "/api/v1/penjadwalan/**").authenticated()
-                                        .requestMatchers(HttpMethod.PUT, "/api/v1/penjadwalan/*/reassign", "/api/v1/penjadwalan/*/reassign/").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG")
-                                        .requestMatchers(HttpMethod.POST, "/api/v1/penjadwalan", "/api/v1/penjadwalan/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_TEKNISI", "ROLE_DELIVERY")
-                                        .requestMatchers(HttpMethod.PUT, "/api/v1/penjadwalan", "/api/v1/penjadwalan/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_TEKNISI", "ROLE_DELIVERY")
+                                        .requestMatchers(HttpMethod.PUT, "/api/v1/penjadwalan/*/reassign", "/api/v1/penjadwalan/*/reassign/").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PENJADWALAN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG")
+                                        .requestMatchers(HttpMethod.POST, "/api/v1/penjadwalan", "/api/v1/penjadwalan/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PENJADWALAN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_TEKNISI", "ROLE_DELIVERY")
+                                        .requestMatchers(HttpMethod.PUT, "/api/v1/penjadwalan", "/api/v1/penjadwalan/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PENJADWALAN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_TEKNISI", "ROLE_DELIVERY")
 
                                         // MEMOS (Strict RBAC)
-                                        .requestMatchers(HttpMethod.POST, "/api/v1/memos/*/penjadwalan", "/api/v1/memos/*/konfirmasi-kirim").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_TEKNISI", "ROLE_DELIVERY")
-                                        .requestMatchers(HttpMethod.POST, "/api/v1/memos", "/api/v1/memos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE")
-                                        .requestMatchers(HttpMethod.PUT, "/api/v1/memos/*/gudang-finish", "/api/v1/memos/*/invoice-finish", "/api/v1/memos/*/technician-finish", "/api/v1/memos/*/delivery-finish", "/api/v1/memos/*/pickup-route", "/api/v1/memos/*/pickup-final", "/api/v1/memos/*/delivery-route", "/api/v1/memos/*/complete").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_GUDANG", "ROLE_TEKNISI", "ROLE_DELIVERY", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_NOTA")
-                                        .requestMatchers(HttpMethod.PUT, "/api/v1/memos", "/api/v1/memos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_DELIVERY", "ROLE_TEKNISI", "ROLE_NOTA")
+                                        .requestMatchers(HttpMethod.POST, "/api/v1/memos/*/penjadwalan", "/api/v1/memos/*/konfirmasi-kirim").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "MEMO", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_TEKNISI", "ROLE_DELIVERY")
+                                        .requestMatchers(HttpMethod.POST, "/api/v1/memos", "/api/v1/memos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "MEMO", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE")
+                                        .requestMatchers(HttpMethod.PUT, "/api/v1/memos/*/gudang-finish", "/api/v1/memos/*/invoice-finish", "/api/v1/memos/*/technician-finish", "/api/v1/memos/*/delivery-finish", "/api/v1/memos/*/pickup-route", "/api/v1/memos/*/pickup-final", "/api/v1/memos/*/delivery-route", "/api/v1/memos/*/complete").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "MEMO", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_GUDANG", "ROLE_TEKNISI", "ROLE_DELIVERY", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_NOTA")
+                                        .requestMatchers(HttpMethod.PUT, "/api/v1/memos", "/api/v1/memos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "MEMO", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE", "ROLE_GUDANG", "ROLE_DELIVERY", "ROLE_TEKNISI", "ROLE_NOTA")
                                         .requestMatchers(HttpMethod.GET, "/api/v1/memos", "/api/v1/memos/**").authenticated()
                                         
                                         // REQUEST DELIVERY (New System)
@@ -149,16 +151,49 @@ public class SecurityConfig {
                                         .requestMatchers(HttpMethod.POST, "/api/v1/request-delivery", "/api/v1/request-delivery/", "/api/v1/request-delivery/**").authenticated()
 
                                         // DELIVERY ASSIGNMENT & SCAN
-                                        .requestMatchers("/api/v1/delivery", "/api/v1/delivery/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_DELIVERY", "ROLE_GUDANG")
+                                        .requestMatchers("/api/v1/delivery", "/api/v1/delivery/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PENGIRIMAN", "ROLE_DELIVERY", "ROLE_GUDANG")
 
+                                        // SERVIS
+                                        .requestMatchers("/api/v1/transaksi-servis/**", "/api/v1/pelanggan-servis/**", "/api/v1/laporan-servis/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SERVIS", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI")
+
+                                        // PEMBELIAN & PENJUALAN
+                                        // Export Excel PEMBELIAN/PENJUALAN/PIUTANG/HUTANG: hanya ADMIN & MANAGER
+                                        .requestMatchers("/api/v1/sales/export", "/api/v1/sale/export", "/api/v1/sales/export/*",
+                                                        "/api/v1/purchases/export", "/api/v1/purchase/export", "/api/v1/purchases/export/*",
+                                                        "/api/v1/piutang/export", "/api/v1/piutangs/export", "/api/v1/piutang/export/*",
+                                                        "/api/v1/hutang/export", "/api/v1/hutangs/export", "/api/v1/hutang/export/*")
+                                .hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER")
+                                        .requestMatchers("/api/v1/purchases/**", "/api/v1/purchase/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PEMBELIAN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI")
+                                        .requestMatchers("/api/v1/sales/**", "/api/v1/sale/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PENJUALAN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI")
+
+                                        // HUTANG (pembelian by status): gate sama seperti Pembelian (permission PEMBELIAN)
+                                        .requestMatchers("/api/v1/hutang", "/api/v1/hutangs", "/api/v1/hutang/**", "/api/v1/hutangs/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PEMBELIAN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI")
+                                        // PIUTANG (penjualan by status): permission PIUTANG (ADMIN/MANAGER punya semua permission)
+                                        .requestMatchers("/api/v1/piutang", "/api/v1/piutangs", "/api/v1/piutang/**", "/api/v1/piutangs/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PIUTANG")
+
+                                        // DATA WAREHOUSE & CANVAS
+                                        .requestMatchers("/api/v1/old-data/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "DATA_WAREHOUSE", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI")
+                                        .requestMatchers("/api/v1/canvasings/**", "/api/v1/canvasing/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "CANVAS", "ROLE_SPV_MARKETING", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE")
+                                        .requestMatchers("/api/v1/data-canvasing/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "DATA_CANVAS", "ROLE_SPV_MARKETING")
+
+                                        // MASTER DATA LAINNYA
+                                        .requestMatchers("/api/v1/tkdns/**", "/api/v1/tkdn/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "TKDN", "ROLE_SPV_MARKETING", "ROLE_MARKETING", "ROLE_MARKETING_TOKO", "ROLE_MARKETING_PROJECT", "ROLE_MARKETING_DISTRIBUSI", "ROLE_MARKETING_ONLINE")
+                                        .requestMatchers("/api/v1/ijin-import/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "IJIN_IMPORT")
+                                        .requestMatchers("/api/v1/shbj/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SHBJ")
+                                        .requestMatchers("/api/v1/announcements/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "ANNOUNCEMENT")
 
                                         // Endpoint Admin & Spv (Data sensitif)
-                                        .requestMatchers(HttpMethod.GET, "/api/v1/users", "/api/v1/users/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_GUDANG", "ROLE_MARKETING", "ROLE_MARKETING_ONLINE", "ROLE_TEKNISI", "ROLE_DELIVERY")
-.requestMatchers("/api/v1/users/**", "/api/v1/activity-logs/**", "/api/v1/old-data/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_MARKETING_ONLINE", "ROLE_TEKNISI")
-                                        .requestMatchers("/api/v1/sales/export", "/api/v1/purchases/export").hasAnyAuthority("ROLE_ADMIN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI")
-                                        // Laporan Omset Marketing hanya untuk ROLE_MANAGER
-                                        .requestMatchers("/api/v1/sales/reports/marketing/**").hasAuthority("ROLE_MANAGER")
-                                        .requestMatchers("/api/v1/reminders/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER")
+                                        .requestMatchers(HttpMethod.GET, "/api/v1/users", "/api/v1/users/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "USERS", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_GUDANG", "ROLE_MARKETING", "ROLE_MARKETING_ONLINE", "ROLE_TEKNISI", "ROLE_DELIVERY")
+                                        .requestMatchers("/api/v1/users/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "USERS")
+                                        .requestMatchers("/api/v1/activity-logs/**", "/api/v1/audit/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "ACTIVITY_LOG", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI")
+                                        
+                                        // Laporan Omset Marketing
+                                        .requestMatchers("/api/v1/sales/reports/marketing/**").hasAnyAuthority("ROLE_MANAGER", "ROLE_ADMIN", "LAPORAN_OMSET")
+                                        .requestMatchers("/api/v1/reminders/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "REMINDER")
+
+                                        // LOKASI TRACKING: track vs view dipisah permission
+                                        .requestMatchers(HttpMethod.POST, "/api/v1/locations/track", "/api/v1/locations/track/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "LOCATION_TRACK", "ROLE_DELIVERY")
+                                        .requestMatchers(HttpMethod.GET, "/api/v1/locations/history", "/api/v1/locations/history/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "LOCATION_VIEW")
 
                                         // Catch-all sisanya
                                         .anyRequest().authenticated()

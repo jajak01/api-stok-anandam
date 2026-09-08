@@ -25,6 +25,7 @@ public class PostgresSchemaInitializer {
         fixMemoStatuses();
         addSalesProfitabilityColumns();
         addPricelistNormalizedColumn();
+        initUserPermissionsTable();
         log.info("=== POSTGRESQL DATABASE SCHEMA INITIALIZATION COMPLETED ===");
     }
 
@@ -105,6 +106,23 @@ public class PostgresSchemaInitializer {
             log.info("Successfully completed legacy MemoStatus migration.");
         } catch (Exception e) {
             log.error("Failed to migrate legacy MemoStatus: {}", e.getMessage());
+        }
+    }
+
+    private void initUserPermissionsTable() {
+        log.info("Checking and creating user_permissions table if not exists...");
+        try {
+            pgJdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS user_permissions (" +
+                "    user_id BIGINT NOT NULL, " +
+                "    permission VARCHAR(100) NOT NULL, " +
+                "    PRIMARY KEY (user_id, permission), " +
+                "    CONSTRAINT fk_user_permissions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE" +
+                ")"
+            );
+            log.info("Successfully verified user_permissions table.");
+        } catch (Exception e) {
+            log.error("Failed to initialize user_permissions table: {}", e.getMessage());
         }
     }
 }

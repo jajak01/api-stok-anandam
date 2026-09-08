@@ -31,6 +31,9 @@ public class StockService {
         private StockRepository stockRepository;
 
         @Autowired
+        private AppSettingsService appSettingsService;
+
+        @Autowired
         private SalesRepository salesRepository;
 
         @Autowired
@@ -101,7 +104,6 @@ public class StockService {
                                                         Sort.by(sortDirection, actualSortBy.replace("s.", ""))));
                 }
                 List<String> itemCodes = itemCodePage.getContent();
-
                 if (itemCodes.isEmpty()) {
                         return Page.empty(pageable);
                 }
@@ -257,6 +259,16 @@ public class StockService {
                         String trimmedName = displayStock.getItemName() != null ? displayStock.getItemName().trim() : "";
                         String lookupKey = trimmedName.toLowerCase();
 
+                        // hargaButtom = hargaHpp + (hargaHpp * percent / 100)
+                        BigDecimal hpp = displayStock.getHargaHpp();
+                        BigDecimal hargaButtom = null;
+                        if (hpp != null) {
+                            BigDecimal percent = appSettingsService.getHargaButtomPercent();
+                            BigDecimal factor = percent.add(new BigDecimal("100"))
+                                    .divide(new BigDecimal("100"), 6, java.math.RoundingMode.HALF_UP);
+                            hargaButtom = hpp.multiply(factor).setScale(2, java.math.RoundingMode.HALF_UP);
+                        }
+
                         List<WarehouseStockDTO> warehouses = stocks.stream()
                                         .map(s -> WarehouseStockDTO.builder()
                                                          .warehouse(s.getWarehouse())
@@ -281,6 +293,7 @@ public class StockService {
                                         .kategoriItemcode(displayStock.getKategoriItemcode())
                                         .totalStok(totalStok)
                                         .hargaHpp(displayStock.getHargaHpp())
+                                        .hargaButtom(hargaButtom)
                                         .grandTotal(grandTotal)
                                         .spesifikasi(priceInfo != null ? priceInfo.getSpesifikasi() : null)
                                         .modal(priceInfo != null ? priceInfo.getModal() : null)

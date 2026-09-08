@@ -120,4 +120,76 @@ public interface PurchaseRepository extends JpaRepository<Purchase, Long> {
 
         @Query("SELECT DISTINCT p.depCode FROM Purchase p WHERE p.depCode IS NOT NULL AND TRIM(p.depCode) <> '' ORDER BY p.depCode")
         java.util.List<String> findDistinctDepCodes();
+
+        @Query("SELECT DISTINCT p.empCode, MAX(p.empName) FROM Purchase p WHERE p.empCode IS NOT NULL AND TRIM(p.empCode) <> '' GROUP BY p.empCode ORDER BY p.empCode")
+        java.util.List<Object[]> findDistinctEmpCodeAndName();
+
+        // ==================== HUTANG (row-level, spt list Pembelian + tab PAID/UNPAID) =====
+        @Query("SELECT p FROM Purchase p WHERE " +
+                        "(p.docDate BETWEEN :startDate AND :endDate) AND " +
+                        "(:empCodes IS NULL OR p.empCode IN :empCodes) AND " +
+                        "(:categories IS NULL OR p.depCode IN :categories) AND " +
+                        "(:search IS NULL OR :search = '' OR " +
+                        "((:searchColumn IS NULL OR :searchColumn = 'ALL' OR :searchColumn = '') AND (LOWER(p.docNoP) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.parName) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.itemName) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.depCode) LIKE LOWER(CONCAT('%', :search, '%')))) OR " +
+                        "(:searchColumn = 'noNota' AND LOWER(p.docNoP) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
+                        "(:searchColumn = 'distributor' AND LOWER(p.parName) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
+                        "(:searchColumn = 'barang' AND LOWER(p.itemName) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
+                        "(:searchColumn = 'dept' AND LOWER(p.depCode) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+                        ") AND " +
+                        "(:isPaid = true AND UPPER(TRIM(p.statusBayar)) IN ('PAID','LUNAS','Lunas') " +
+                        " OR :isPaid = false AND (p.statusBayar IS NULL OR UPPER(TRIM(p.statusBayar)) IN ('UNPAID','BELUM LUNAS','Belum Lunas','JATUH TEMPO','Jatuh Tempo')))")
+        Page<Purchase> findHutangRows(
+                        @Param("startDate") LocalDate startDate,
+                        @Param("endDate") LocalDate endDate,
+                        @Param("empCodes") List<String> empCodes,
+                        @Param("categories") List<String> categories,
+                        @Param("search") String search,
+                        @Param("searchColumn") String searchColumn,
+                        @Param("isPaid") boolean isPaid,
+                        Pageable pageable);
+
+        @Query("SELECT COALESCE(SUM(p.grandTotal), 0) FROM Purchase p WHERE " +
+                        "(p.docDate BETWEEN :startDate AND :endDate) AND " +
+                        "(:empCodes IS NULL OR p.empCode IN :empCodes) AND " +
+                        "(:categories IS NULL OR p.depCode IN :categories) AND " +
+                        "(:search IS NULL OR :search = '' OR " +
+                        "((:searchColumn IS NULL OR :searchColumn = 'ALL' OR :searchColumn = '') AND (LOWER(p.docNoP) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.parName) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.itemName) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.depCode) LIKE LOWER(CONCAT('%', :search, '%')))) OR " +
+                        "(:searchColumn = 'noNota' AND LOWER(p.docNoP) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
+                        "(:searchColumn = 'distributor' AND LOWER(p.parName) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
+                        "(:searchColumn = 'barang' AND LOWER(p.itemName) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
+                        "(:searchColumn = 'dept' AND LOWER(p.depCode) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+                        ") AND " +
+                        "(:isPaid = true AND UPPER(TRIM(p.statusBayar)) IN ('PAID','LUNAS','Lunas') " +
+                        " OR :isPaid = false AND (p.statusBayar IS NULL OR UPPER(TRIM(p.statusBayar)) IN ('UNPAID','BELUM LUNAS','Belum Lunas','JATUH TEMPO','Jatuh Tempo')))")
+        BigDecimal sumHutangGrandTotal(
+                        @Param("startDate") LocalDate startDate,
+                        @Param("endDate") LocalDate endDate,
+                        @Param("empCodes") List<String> empCodes,
+                        @Param("categories") List<String> categories,
+                        @Param("search") String search,
+                        @Param("searchColumn") String searchColumn,
+                        @Param("isPaid") boolean isPaid);
+
+        @Query("SELECT p FROM Purchase p WHERE " +
+                        "(p.docDate BETWEEN :startDate AND :endDate) AND " +
+                        "(:empCodes IS NULL OR p.empCode IN :empCodes) AND " +
+                        "(:categories IS NULL OR p.depCode IN :categories) AND " +
+                        "(:search IS NULL OR :search = '' OR " +
+                        "((:searchColumn IS NULL OR :searchColumn = 'ALL' OR :searchColumn = '') AND (LOWER(p.docNoP) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.parName) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.itemName) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(p.depCode) LIKE LOWER(CONCAT('%', :search, '%')))) OR " +
+                        "(:searchColumn = 'noNota' AND LOWER(p.docNoP) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
+                        "(:searchColumn = 'distributor' AND LOWER(p.parName) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
+                        "(:searchColumn = 'barang' AND LOWER(p.itemName) LIKE LOWER(CONCAT('%', :search, '%'))) OR " +
+                        "(:searchColumn = 'dept' AND LOWER(p.depCode) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+                        ") AND " +
+                        "(:isPaid = true AND UPPER(TRIM(p.statusBayar)) IN ('PAID','LUNAS','Lunas') " +
+                        " OR :isPaid = false AND (p.statusBayar IS NULL OR UPPER(TRIM(p.statusBayar)) IN ('UNPAID','BELUM LUNAS','Belum Lunas','JATUH TEMPO','Jatuh Tempo'))) " +
+                        "ORDER BY p.docDate DESC")
+        java.util.List<Purchase> findAllHutangRows(
+                        @Param("startDate") LocalDate startDate,
+                        @Param("endDate") LocalDate endDate,
+                        @Param("empCodes") List<String> empCodes,
+                        @Param("categories") List<String> categories,
+                        @Param("search") String search,
+                        @Param("searchColumn") String searchColumn,
+                        @Param("isPaid") boolean isPaid);
 }

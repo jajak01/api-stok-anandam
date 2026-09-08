@@ -52,4 +52,19 @@ public class User {
     private LocalDateTime lastActivity;
 
     private LocalDateTime lastLogin;
+
+    @Column(name = "sessions_revoked_at")
+    private LocalDateTime sessionsRevokedAt;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_permissions", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "permission")
+    @Builder.Default
+    private java.util.Set<String> permissions = new java.util.HashSet<>();
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_emp_code_access", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "emp_code")
+    @Builder.Default
+    private java.util.Set<String> empCodeAccess = new java.util.HashSet<>();
 }

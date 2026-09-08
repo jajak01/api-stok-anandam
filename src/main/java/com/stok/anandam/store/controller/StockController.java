@@ -7,6 +7,7 @@ import com.stok.anandam.store.dto.StockSummaryRowResponse;
 import com.stok.anandam.store.dto.StockGroupedResponse;
 import com.stok.anandam.store.dto.StokBadanGroupResponse;
 import com.stok.anandam.store.dto.WebResponse;
+import com.stok.anandam.store.service.AppSettingsService;
 import com.stok.anandam.store.service.StockService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -27,6 +28,46 @@ public class StockController {
 
         @Autowired
         private StockService stockService;
+
+        @Autowired
+        private AppSettingsService appSettingsService;
+
+        /**
+         * GET persen hargaButtom (nilai fleksibel, default 3%).
+         * Response: WebResponse<Map "percent">
+         */
+        @GetMapping("/harga-buttom-percent")
+        public ResponseEntity<WebResponse<java.util.Map<String, Object>>> getHargaButtomPercent() {
+                java.math.BigDecimal percent = appSettingsService.getHargaButtomPercent();
+                return ResponseEntity.ok(WebResponse.<java.util.Map<String, Object>>builder()
+                                .status(200)
+                                .message("Success fetch harga buttom percent")
+                                .data(Map.of("percent", percent))
+                                .paging(null)
+                                .build());
+        }
+
+        /**
+         * PUT ubah persen hargaButtom (mis. 3 artinya +3% dari HPP).
+         * Body: {"percent": 5}
+         * Hanya ADMIN/MANAGER (dijaga di SecurityConfig).
+         */
+        @PutMapping("/harga-buttom-percent")
+        public ResponseEntity<WebResponse<java.util.Map<String, Object>>> updateHargaButtomPercent(
+                        @RequestBody java.util.Map<String, Object> body) {
+                Object raw = body != null ? body.get("percent") : null;
+                if (raw == null) {
+                        throw new IllegalArgumentException("percent wajib diisi");
+                }
+                java.math.BigDecimal percent = new java.math.BigDecimal(raw.toString());
+                java.math.BigDecimal saved = appSettingsService.setHargaButtomPercent(percent);
+                return ResponseEntity.ok(WebResponse.<java.util.Map<String, Object>>builder()
+                                .status(200)
+                                .message("Harga buttom percent updated")
+                                .data(Map.of("percent", saved))
+                                .paging(null)
+                                .build());
+        }
 
         /**
          * GET list: filter search (nama/code), kategori (kategori_itemcode), warehouse.

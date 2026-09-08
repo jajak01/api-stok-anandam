@@ -35,10 +35,28 @@ public class SalesService {
         @Autowired
         private SalesRepository salesRepository;
 
+        @Autowired
+        private UserAuthorizationService userAuthorizationService;
+
+        /** Backward-compatible entry: no username -> full visibility, no masking. */
         public SalesSummaryResponse<Sales> getSales(
                         int page, int size, String sortBy, String dir,
-                        String startDateStr, String endDateStr, List<String> empCodes, 
+                        String startDateStr, String endDateStr, List<String> empCodes,
                         List<String> categories, String search, String searchColumn) {
+                return getSales(page, size, sortBy, dir, startDateStr, endDateStr, empCodes, categories, search, searchColumn, null);
+        }
+
+        /**
+         * List penjualan dengan pengawasan otorisasi:
+         * 1. Jika user punya empCodeAccess non-kosong -> scope dibatasi ke emp codes tsb (+ employeeCode sendiri).
+         * 2. Jika user TIDAK punya permission PAYMENT_STATUS -> paidTotal/statusBayar disamarkan (null).
+         *
+         * @param username username user yang login (nullable utk kompatibilitas internal).
+         */
+        public SalesSummaryResponse<Sales> getSales(
+                        int page, int size, String sortBy, String dir,
+                        String startDateStr, String endDateStr, List<String> empCodes,
+                        List<String> categories, String search, String searchColumn, String username) {
                 // 1. Parsing Tanggal
                 LocalDate start = (startDateStr != null && !startDateStr.isBlank())
                                 ? LocalDate.parse(startDateStr)
@@ -48,22 +66,39 @@ public class SalesService {
                                 ? LocalDate.parse(endDateStr)
                                 : LocalDate.now();
 
+                com.stok.anandam.store.core.postgres.model.User aktor = username != null ? userAuthorizationService.requireUser(username) : null;
+                List<String> scopeFilter = userAuthorizationService.effectiveScopeFilter(aktor, empCodes);
+                boolean maskPayment = aktor != null && !userAuthorizationService.canViewPaymentStatus(aktor);
+
+                // Scope kosong -> tidak ada data yang boleh terlihat (hindari IN () kosong).
+                if (scopeFilter != null && scopeFilter.isEmpty()) {
+                        return emptySummary();
+                }
+
                 // 2. Setup Paging
                 Sort.Direction direction = dir.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC;
                 Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
 
                 // 3. Ambil Data
-                Page<Sales> pageResult = salesRepository.findByFilters(start, end, empCodes, categories, search, searchColumn, pageable);
+                Page<Sales> pageResult = salesRepository.findByFilters(start, end, scopeFilter, categories, search, searchColumn, pageable);
 
                 // 4. Ambil Total Sum
-                BigDecimal totalSum = salesRepository.sumGrandTotalByFilters(start, end, empCodes, categories, search, searchColumn);
-                Long totalQty = salesRepository.sumQtyByFilters(start, end, empCodes, categories, search, searchColumn);
-                BigDecimal totalHpp = salesRepository.sumTotalHppByFilters(start, end, empCodes, categories, search, searchColumn);
-                BigDecimal totalLaba = salesRepository.sumLabaKotorByFilters(start, end, empCodes, categories, search, searchColumn);
+                BigDecimal totalSum = salesRepository.sumGrandTotalByFilters(start, end, scopeFilter, categories, search, searchColumn);
+                Long totalQty = salesRepository.sumQtyByFilters(start, end, scopeFilter, categories, search, searchColumn);
+                BigDecimal totalHpp = salesRepository.sumTotalHppByFilters(start, end, scopeFilter, categories, search, searchColumn);
+                BigDecimal totalLaba = salesRepository.sumLabaKotorByFilters(start, end, scopeFilter, categories, search, searchColumn);
+
+                List<Sales> content = new java.util.ArrayList<>(pageResult.getContent());
+                if (maskPayment) {
+                        for (Sales s : content) {
+                                s.setPaidTotal(null);
+                                s.setStatusBayar(null);
+                        }
+                }
 
                 // 5. Return Response
                 return SalesSummaryResponse.<Sales>builder()
-                                .content(pageResult.getContent())
+                                .content(content)
                                 .totalGrandSum(totalSum)
                                 .totalQty(totalQty != null ? BigDecimal.valueOf(totalQty) : BigDecimal.ZERO)
                                 .totalHpp(totalHpp != null ? totalHpp : BigDecimal.ZERO)
@@ -76,6 +111,12 @@ public class SalesService {
 
         public java.util.List<Sales> getAllSalesForExport(String startDateStr, String endDateStr, List<String> empCodes,
                         List<String> categories, String search, String searchColumn) {
+                return getAllSalesForExport(startDateStr, endDateStr, empCodes, categories, search, searchColumn, null);
+        }
+
+        /** Export juga tunduk pada scope EMP (backend enforcement). */
+        public java.util.List<Sales> getAllSalesForExport(String startDateStr, String endDateStr, List<String> empCodes,
+                        List<String> categories, String search, String searchColumn, String username) {
                 LocalDate start = (startDateStr != null && !startDateStr.isBlank())
                                 ? LocalDate.parse(startDateStr)
                                 : LocalDate.of(2000, 1, 1);
@@ -84,7 +125,37 @@ public class SalesService {
                                 ? LocalDate.parse(endDateStr)
                                 : LocalDate.now();
 
-                return salesRepository.findAllByFilters(start, end, empCodes, categories, search, searchColumn);
+                com.stok.anandam.store.core.postgres.model.User aktor = username != null ? userAuthorizationService.requireUser(username) : null;
+                List<String> scopeFilter = userAuthorizationService.effectiveScopeFilter(aktor, empCodes);
+                if (scopeFilter != null && scopeFilter.isEmpty()) {
+                        return new java.util.ArrayList<>();
+                }
+
+                return salesRepository.findAllByFilters(start, end, scopeFilter, categories, search, searchColumn);
+        }
+
+        private SalesSummaryResponse<Sales> emptySummary() {
+                return SalesSummaryResponse.<Sales>builder()
+                                .content(new java.util.ArrayList<>())
+                                .totalGrandSum(BigDecimal.ZERO)
+                                .totalQty(BigDecimal.ZERO)
+                                .totalHpp(BigDecimal.ZERO)
+                                .totalLabaKotor(BigDecimal.ZERO)
+                                .marginPct(BigDecimal.ZERO)
+                                .totalPages(0)
+                                .totalElements(0)
+                                .build();
+        }
+
+        private ProfitabilityResponse<ProfitabilityRowResponse> emptyProfitability() {
+                return ProfitabilityResponse.<ProfitabilityRowResponse>builder()
+                                .content(new java.util.ArrayList<>())
+                                .totalQty(BigDecimal.ZERO)
+                                .totalOmset(BigDecimal.ZERO)
+                                .totalHpp(BigDecimal.ZERO)
+                                .totalLabaKotor(BigDecimal.ZERO)
+                                .marginPct(BigDecimal.ZERO)
+                                .build();
         }
 
         public java.util.List<com.stok.anandam.store.dto.EmployeeOption> getEmployeeCodes() {
@@ -105,9 +176,17 @@ public class SalesService {
          * Source: tabel sales (Postgres) yang sudah diisi kolom hpp_satuan/total_hpp/laba_kotor
          * oleh service migrasi. Retur (RJ) sudah diperhitungkan di level baris.
          */
+        /** Backward-compatible entry: no username -> full visibility. */
         public ProfitabilityResponse<ProfitabilityRowResponse> getProfitability(
                         String startDateStr, String endDateStr, List<String> empCodes,
                         List<String> categories, String search, String searchColumn) {
+                return getProfitability(startDateStr, endDateStr, empCodes, categories, search, searchColumn, null);
+        }
+
+        /** Profitabilitas juga tunduk pada scope EMP (backend enforcement). */
+        public ProfitabilityResponse<ProfitabilityRowResponse> getProfitability(
+                        String startDateStr, String endDateStr, List<String> empCodes,
+                        List<String> categories, String search, String searchColumn, String username) {
 
                 LocalDate start = (startDateStr != null && !startDateStr.isBlank())
                                 ? LocalDate.parse(startDateStr)
@@ -117,7 +196,13 @@ public class SalesService {
                                 ? LocalDate.parse(endDateStr)
                                 : LocalDate.now();
 
-                List<Object[]> rows = salesRepository.findProfitabilityByFilters(start, end, empCodes, categories, search, searchColumn);
+                com.stok.anandam.store.core.postgres.model.User aktor = username != null ? userAuthorizationService.requireUser(username) : null;
+                List<String> scopeFilter = userAuthorizationService.effectiveScopeFilter(aktor, empCodes);
+                if (scopeFilter != null && scopeFilter.isEmpty()) {
+                        return emptyProfitability();
+                }
+
+                List<Object[]> rows = salesRepository.findProfitabilityByFilters(start, end, scopeFilter, categories, search, searchColumn);
 
                 List<ProfitabilityRowResponse> content = rows.stream().map(row -> {
                         BigDecimal omset = num((Object) row[5]);

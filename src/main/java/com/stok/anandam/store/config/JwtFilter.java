@@ -30,6 +30,9 @@ public class JwtFilter extends OncePerRequestFilter {
     @Autowired
     private CustomUserDetailsService userDetailsService;
 
+    @Autowired
+    private com.stok.anandam.store.core.postgres.repository.UserRepository userRepository;
+
     /** Skip JWT untuk path publik agar tidak parse token / hit DB (optimal). */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -77,34 +80,56 @@ public class JwtFilter extends OncePerRequestFilter {
         // 2. Validasi Token & Set Authentication
         // Jika username ketemu DAN belum ada yang login di context saat ini
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            try {
+                // Ambil data user dari database
+                UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
-            // Ambil data user dari database
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
+                // Cek apakah user aktif/enabled
+                if (!userDetails.isEnabled()) {
+                    log.debug("User is disabled: {}", username);
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write(
+                            "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Akun Anda telah dinonaktifkan. Silakan hubungi admin.\"}");
+                    return;
+                }
 
-            // Cek apakah user aktif/enabled
-            if (!userDetails.isEnabled()) {
-                log.debug("User is disabled: {}", username);
+                // Cek apakah token valid (signature benar & belum expired)
+                if (jwtUtil.validateToken(jwt, userDetails)) {
+                    // Validasi pencabutan sesi (session revocation)
+                    com.stok.anandam.store.core.postgres.model.User userEntity = userRepository.findByUsername(username).orElse(null);
+                    if (userEntity != null && userEntity.getSessionsRevokedAt() != null) {
+                        java.util.Date issuedAt = jwtUtil.extractIssuedAt(jwt);
+                        if (issuedAt != null) {
+                            java.time.Instant issuedInstant = issuedAt.toInstant();
+                            java.time.Instant revokedInstant = userEntity.getSessionsRevokedAt().atZone(java.time.ZoneId.systemDefault()).toInstant();
+                            if (issuedInstant.isBefore(revokedInstant)) {
+                                log.debug("Session revoked for user: {}", username);
+                                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                                response.setContentType("application/json");
+                                response.getWriter().write(
+                                        "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Sesi Anda telah berakhir. Silakan login kembali.\"}");
+                                return;
+                            }
+                        }
+                    }
+
+                    // Buat objek Authentication
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                            userDetails, null, userDetails.getAuthorities());
+
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                    // Masukkan user ke context Spring Security (User dianggap LOGIN)
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
+            } catch (org.springframework.security.core.userdetails.UsernameNotFoundException e) {
+                log.debug("User not found / deleted: {}", username);
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.setContentType("application/json");
                 response.getWriter().write(
-                        "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Akun Anda telah dinonaktifkan. Silakan hubungi admin.\"}");
+                        "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"User tidak ditemukan atau sesi telah berakhir\"}");
                 return;
-            }
-
-            // Cek apakah token valid (signature benar & belum expired)
-            if (jwtUtil.validateToken(jwt, userDetails)) {
-
-                // Buat objek Authentication
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails, null, userDetails.getAuthorities());
-
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                // Masukkan user ke context Spring Security (User dianggap LOGIN)
-                SecurityContextHolder.getContext().setAuthentication(authToken);
-
-                // TODO: Update activity status dipindahkan ke asinkron/Redis untuk performa
-                // Jangan lakukan userRepository.save() di dalam filter ini karena dipanggil setiap request!
             }
         }
 

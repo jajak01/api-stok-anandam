@@ -1,5 +1,6 @@
 package com.stok.anandam.store.service;
 
+import com.stok.anandam.store.core.postgres.model.DefaultRolePermissions;
 import com.stok.anandam.store.core.postgres.model.Role;
 import com.stok.anandam.store.core.postgres.model.User;
 import com.stok.anandam.store.core.postgres.repository.RefreshTokenRepository;
@@ -14,6 +15,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
+
+import java.time.LocalDateTime;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -38,6 +41,9 @@ public class UserService {
 
     @Autowired
     private ActivityLogService activityLogService;
+
+    @Autowired
+    private UserSessionService userSessionService;
 
     /**
      * List user dengan filter opsional: search (nama/username), role. Jika halaman
@@ -76,10 +82,20 @@ public class UserService {
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setRole(request.getRole());
         user.setNoHp(request.getNoHp());
+        user.setEmployeeCode(request.getEmployeeCode());
+        if (request.getEmpCodeAccess() != null) {
+            user.setEmpCodeAccess(new java.util.HashSet<>(request.getEmpCodeAccess()));
+        }
+        if (request.getPermissions() != null && !request.getPermissions().isEmpty()) {
+            user.setPermissions(new java.util.HashSet<>(request.getPermissions()));
+        } else {
+            user.setPermissions(new java.util.HashSet<>(DefaultRolePermissions.getDefaultPermissions(request.getRole())));
+        }
         User savedUser = userRepository.save(user);
         return toUserResponse(savedUser);
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public UserResponse updateUser(Long id, UserRequest request) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User dengan ID " + id + " tidak ditemukan"));
@@ -95,6 +111,15 @@ public class UserService {
         user.setUsername(request.getUsername());
         user.setRole(request.getRole());
         user.setNoHp(request.getNoHp());
+        if (request.getEmployeeCode() != null) {
+            user.setEmployeeCode(request.getEmployeeCode());
+        }
+        if (request.getEmpCodeAccess() != null) {
+            user.setEmpCodeAccess(new java.util.HashSet<>(request.getEmpCodeAccess()));
+        }
+        if (request.getPermissions() != null) {
+            user.setPermissions(new java.util.HashSet<>(request.getPermissions()));
+        }
 
         if (request.getPassword() != null && !request.getPassword().isBlank()) {
             user.setPassword(passwordEncoder.encode(request.getPassword()));
@@ -110,20 +135,37 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("User dengan ID " + id + " tidak ditemukan"));
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String currentUsername = auth.getName();
+        String currentUsername = auth != null ? auth.getName() : "";
 
         if (user.getUsername().equals(currentUsername)) {
             throw new DataIntegrityViolationException("Anda tidak dapat menghapus akun sendiri yang sedang aktif!");
         }
 
-        // Hapus refresh token yang terkait dengan user ini terlebih dahulu
-        // Ini penting karena ada foreign key constraint dari refresh_token ke user
+        // 1. Invalidate session & revoke refresh tokens immediately across all devices
+        user.setActive(false);
+        user.setSessionsRevokedAt(LocalDateTime.now());
+        user.setIsOnline(false);
+        user.setDeviceCount(0);
+
         refreshTokenRepository.findByUser(user).ifPresent(refreshToken -> {
             refreshTokenRepository.delete(refreshToken);
         });
+        refreshTokenRepository.deleteByUser(user);
 
-        // Baru setelah itu hapus user
-        userRepository.delete(user);
+        if (userSessionService != null) {
+            userSessionService.removeUserSession(user.getUsername());
+            userSessionService.setUserOffline(user.getUsername());
+        }
+
+        // 2. Try hard-delete first; if foreign key integrity prevents deletion, maintain soft-deleted state
+        try {
+            userRepository.delete(user);
+            userRepository.flush();
+        } catch (Exception e) {
+            // Keep user soft-deleted / inactive so historical transactions remain intact
+            user.setActive(false);
+            userRepository.save(user);
+        }
     }
 
     /**
@@ -169,7 +211,18 @@ public class UserService {
                     "Anda tidak dapat menonaktifkan akun sendiri yang sedang digunakan!");
         }
 
-        user.setActive(!Boolean.TRUE.equals(user.getActive()));
+        boolean nextActive = !Boolean.TRUE.equals(user.getActive());
+        user.setActive(nextActive);
+        if (!nextActive) {
+            user.setSessionsRevokedAt(LocalDateTime.now());
+            user.setIsOnline(false);
+            user.setDeviceCount(0);
+            refreshTokenRepository.deleteByUser(user);
+            if (userSessionService != null) {
+                userSessionService.removeUserSession(user.getUsername());
+                userSessionService.setUserOffline(user.getUsername());
+            }
+        }
         userRepository.save(user);
         return toUserResponse(user);
     }
@@ -182,15 +235,47 @@ public class UserService {
         // 1. Reset device count and online status
         user.setDeviceCount(0);
         user.setIsOnline(false);
+        user.setSessionsRevokedAt(LocalDateTime.now());
         userRepository.save(user);
 
         // 2. Delete all refresh tokens for this user
         refreshTokenRepository.deleteByUser(user);
+        if (userSessionService != null) {
+            userSessionService.removeUserSession(user.getUsername());
+            userSessionService.setUserOffline(user.getUsername());
+        }
 
         // 3. Log activity
         activityLogService.log(user.getUsername(), "CLEAR_SESSIONS", "Seluruh sesi user dibersihkan oleh admin");
 
         return toUserResponse(user);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public UserResponse updateUserEmpScope(Long id, java.util.Set<String> empScope) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User dengan ID " + id + " tidak ditemukan"));
+        user.setEmpCodeAccess(empScope != null ? new java.util.HashSet<>(empScope) : new java.util.HashSet<>());
+        userRepository.save(user);
+        return toUserResponse(user);
+    }
+
+    public java.util.Set<String> getUserEmpScope(Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User dengan ID " + id + " tidak ditemukan"));
+        return user.getEmpCodeAccess() != null ? new java.util.HashSet<>(user.getEmpCodeAccess()) : new java.util.HashSet<>();
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void processHeartbeat(String username) {
+        userRepository.findByUsername(username).ifPresent(user -> {
+            user.setLastActivity(LocalDateTime.now());
+            user.setIsOnline(true);
+            userRepository.save(user);
+            if (userSessionService != null) {
+                userSessionService.updateUserAction(user.getUsername(), user.getNama(), "active");
+            }
+        });
     }
 
     @org.springframework.transaction.annotation.Transactional
@@ -216,11 +301,29 @@ public class UserService {
         response.setUsername(user.getUsername());
         response.setEmployeeCode(user.getEmployeeCode());
         response.setRole(user.getRole());
-        response.setAuthorities(java.util.Collections.singletonList("ROLE_" + user.getRole().name()));
+
+        java.util.Set<String> perms = user.getPermissions();
+        if (perms == null || perms.isEmpty()) {
+            perms = DefaultRolePermissions.getDefaultPermissions(user.getRole());
+        }
+        response.setPermissions(new java.util.HashSet<>(perms));
+
+        java.util.List<String> authorities = new java.util.ArrayList<>();
+        authorities.add("ROLE_" + user.getRole().name());
+        authorities.addAll(perms);
+        response.setAuthorities(authorities);
+
         response.setActive(Boolean.TRUE.equals(user.getActive()));
-        response.setIsOnline(user.getIsOnline());
+
+        // Server-side calculated online status based on recent heartbeat (within 60 seconds)
+        boolean isOnline = Boolean.TRUE.equals(user.getIsOnline()) &&
+                user.getLastActivity() != null &&
+                user.getLastActivity().isAfter(LocalDateTime.now().minusSeconds(60));
+        response.setIsOnline(isOnline);
         response.setDeviceCount(user.getDeviceCount());
         response.setNoHp(user.getNoHp());
+        response.setEmpCodeAccess(user.getEmpCodeAccess() != null ? new java.util.HashSet<>(user.getEmpCodeAccess()) : new java.util.HashSet<>());
+        response.setSessionsRevokedAt(user.getSessionsRevokedAt());
         return response;
     }
 }
