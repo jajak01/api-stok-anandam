@@ -154,7 +154,7 @@ public class SecurityConfig {
                                         .requestMatchers("/api/v1/delivery", "/api/v1/delivery/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PENGIRIMAN", "ROLE_DELIVERY", "ROLE_GUDANG")
 
                                         // SERVIS
-                                        .requestMatchers("/api/v1/transaksi-servis/**", "/api/v1/pelanggan-servis/**", "/api/v1/laporan-servis/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SERVIS", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI")
+                                        .requestMatchers("/api/v1/transaksi-servis/**", "/api/v1/pelanggan-servis/**", "/api/v1/laporan-servis/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SERVIS", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI", "TEKNISI")
 
                                         // PEMBELIAN & PENJUALAN
                                         // Export Excel PEMBELIAN/PENJUALAN/PIUTANG/HUTANG: hanya ADMIN & MANAGER
@@ -185,7 +185,7 @@ public class SecurityConfig {
                                         // Endpoint Admin & Spv (Data sensitif)
                                         .requestMatchers(HttpMethod.GET, "/api/v1/users", "/api/v1/users/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "USERS", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_GUDANG", "ROLE_MARKETING", "ROLE_MARKETING_ONLINE", "ROLE_TEKNISI", "ROLE_DELIVERY")
                                         .requestMatchers("/api/v1/users/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "USERS")
-                                        .requestMatchers("/api/v1/activity-logs/**", "/api/v1/audit/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "ACTIVITY_LOG", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI")
+                                        .requestMatchers("/api/v1/activity-logs/**", "/api/v1/audit/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "ACTIVITY_LOG", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI")
                                         
                                         // Laporan Omset Marketing
                                         .requestMatchers("/api/v1/sales/reports/marketing/**").hasAnyAuthority("ROLE_MANAGER", "ROLE_ADMIN", "LAPORAN_OMSET")
