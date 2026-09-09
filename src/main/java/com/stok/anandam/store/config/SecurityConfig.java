@@ -164,7 +164,12 @@ public class SecurityConfig {
                                                         "/api/v1/hutang/export", "/api/v1/hutangs/export", "/api/v1/hutang/export/*")
                                 .hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER")
                                         .requestMatchers("/api/v1/purchases/**", "/api/v1/purchase/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PEMBELIAN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI")
-                                        .requestMatchers("/api/v1/sales/**", "/api/v1/sale/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PENJUALAN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI")
+
+                                        // REVISI: Izinkan semua user yang login untuk membaca daftar kode karyawan (dropdown filter)
+                                        // Harus ditempatkan SEBELUM wildcard sales/** agar tidak tertimpa role restriction
+                                        .requestMatchers("/api/v1/sales/employee-codes", "/api/v1/sale/employee-codes").authenticated()
+
+                                        .requestMatchers("/api/v1/sales/**", "/api/v1/sale/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PENJUALAN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI", "SALES", "EMPLOYEE_READ")
 
                                         // HUTANG (pembelian by status): gate sama seperti Pembelian (permission PEMBELIAN)
                                         .requestMatchers("/api/v1/hutang", "/api/v1/hutangs", "/api/v1/hutang/**", "/api/v1/hutangs/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PEMBELIAN", "ROLE_SPV_MARKETING", "ROLE_SPV_GUDANG", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI")

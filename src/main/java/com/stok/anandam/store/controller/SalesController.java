@@ -20,6 +20,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @RestController
 @RequestMapping({ "/api/v1/sales", "/api/v1/sale" })
@@ -78,6 +80,8 @@ public class SalesController {
 
         @GetMapping("/employee-codes")
         public ResponseEntity<WebResponse<java.util.List<com.stok.anandam.store.dto.EmployeeOption>>> getEmployeeCodes() {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                System.out.println("User Authorities: " + auth.getAuthorities());
                 java.util.List<com.stok.anandam.store.dto.EmployeeOption> codes = salesService.getEmployeeCodes();
                 return ResponseEntity
                                 .ok(WebResponse.<java.util.List<com.stok.anandam.store.dto.EmployeeOption>>builder()
