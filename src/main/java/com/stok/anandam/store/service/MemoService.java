@@ -120,11 +120,10 @@ public class MemoService {
                                 || (m.getMarketingEmpCode() != null && empScope.stream().anyMatch(e -> e.equalsIgnoreCase(m.getMarketingEmpCode())));
                         boolean isCreator = m.getCreator() != null && m.getCreator().getId().equals(aktor.getId());
                         boolean isAssigned = assignedMemoIds.contains(m.getId());
+                        boolean isSameRole = (m.getCreator() != null && m.getCreator().getRole() != null && m.getCreator().getRole() == aktor.getRole())
+                                || (m.getMarketing() != null && m.getMarketing().getRole() != null && m.getMarketing().getRole() == aktor.getRole());
 
-                        if (m.getStatusAkhir() == MemoStatus.DRAFT) {
-                            return isCreator;
-                        }
-                        return isOwner || isCreator || isAssigned;
+                        return isSameRole || isOwner || isCreator || isAssigned;
                     })
                     .collect(Collectors.toList());
         } else if ("GUDANG".equals(roleName) || "SPV_GUDANG".equals(roleName)) {
@@ -218,7 +217,9 @@ public class MemoService {
                                 || (m.getMarketingEmpCode() != null && empScope.stream().anyMatch(e -> e.equalsIgnoreCase(m.getMarketingEmpCode())));
                         boolean isCreator = m.getCreator() != null && m.getCreator().getId().equals(aktor.getId());
                         boolean isAssigned = assignedMemoIds.contains(m.getId());
-                        return isOwner || isCreator || isAssigned;
+                        boolean isSameRole = (m.getCreator() != null && m.getCreator().getRole() != null && m.getCreator().getRole() == aktor.getRole())
+                                || (m.getMarketing() != null && m.getMarketing().getRole() != null && m.getMarketing().getRole() == aktor.getRole());
+                        return isSameRole || isOwner || isCreator || isAssigned;
                     })
                     .collect(Collectors.toList());
         } else if ("DELIVERY".equals(roleName)) {
@@ -266,9 +267,9 @@ public class MemoService {
                     .collect(Collectors.toList());
 
             if (assignedMemoIds.isEmpty()) {
-                rawCounts = memoRepository.countStatusesForMarketingWithoutAssigned(userEmpCode, hasEmpScope, empScopeList, aktor.getId());
+                rawCounts = memoRepository.countStatusesForMarketingWithoutAssigned(userEmpCode, hasEmpScope, empScopeList, aktor.getId(), aktor.getRole());
             } else {
-                rawCounts = memoRepository.countStatusesForMarketingWithAssigned(userEmpCode, hasEmpScope, empScopeList, aktor.getId(), assignedMemoIds);
+                rawCounts = memoRepository.countStatusesForMarketingWithAssigned(userEmpCode, hasEmpScope, empScopeList, aktor.getId(), assignedMemoIds, aktor.getRole());
             }
         } else if ("DELIVERY".equals(roleName)) {
             List<UUID> assignedMemoIds = penjadwalanRepo.findByPersonelIdAndDeletedAtIsNull(aktor.getId())
@@ -357,6 +358,14 @@ public class MemoService {
 
         // Creator can always read
         if (memo.getCreator() != null && memo.getCreator().getId().equals(aktor.getId())) {
+            return true;
+        }
+
+        // Same role can read memo
+        if (memo.getCreator() != null && memo.getCreator().getRole() != null && memo.getCreator().getRole() == aktor.getRole()) {
+            return true;
+        }
+        if (memo.getMarketing() != null && memo.getMarketing().getRole() != null && memo.getMarketing().getRole() == aktor.getRole()) {
             return true;
         }
 
@@ -2127,6 +2136,16 @@ public class MemoService {
 
         if (memo.getStatusAkhir() != MemoStatus.DRAFT) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Hanya memo DRAFT yang bisa dihapus");
+        }
+
+        User aktor = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User login tidak ditemukan"));
+
+        boolean isCreator = memo.getCreator() != null && memo.getCreator().getId().equals(aktor.getId());
+        boolean isSameRole = memo.getCreator() != null && memo.getCreator().getRole() == aktor.getRole();
+
+        if (!isCreator && !isSameRole && aktor.getRole() != Role.ADMIN && !aktor.getRole().name().startsWith("SPV_") && aktor.getRole() != Role.MANAGER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Anda tidak memiliki hak untuk menghapus memo ini");
         }
 
         // Delete items first

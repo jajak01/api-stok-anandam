@@ -51,6 +51,8 @@ public interface MemoRepository extends JpaRepository<Memo, UUID> {
     @Query("SELECT m.statusAkhir, COUNT(m.id) FROM Memo m WHERE " +
            "(m.marketingEmpCode = :empCode OR (:hasEmpScope = true AND m.marketingEmpCode IN :empCodes) OR " +
            "m.creator.id = :userId OR " +
+           "m.creator.role = :role OR " +
+           "m.marketing.role = :role OR " +
            "m.id IN :assignedMemoIds) " +
            "GROUP BY m.statusAkhir")
     List<Object[]> countStatusesForMarketingWithAssigned(
@@ -58,17 +60,21 @@ public interface MemoRepository extends JpaRepository<Memo, UUID> {
             @Param("hasEmpScope") boolean hasEmpScope,
             @Param("empCodes") List<String> empCodes,
             @Param("userId") Long userId, 
-            @Param("assignedMemoIds") List<UUID> assignedMemoIds);
+            @Param("assignedMemoIds") List<UUID> assignedMemoIds,
+            @Param("role") com.stok.anandam.store.core.postgres.model.Role role);
 
     @Query("SELECT m.statusAkhir, COUNT(m.id) FROM Memo m WHERE " +
            "(m.marketingEmpCode = :empCode OR (:hasEmpScope = true AND m.marketingEmpCode IN :empCodes) OR " +
-           "m.creator.id = :userId) " +
+           "m.creator.id = :userId OR " +
+           "m.creator.role = :role OR " +
+           "m.marketing.role = :role) " +
            "GROUP BY m.statusAkhir")
     List<Object[]> countStatusesForMarketingWithoutAssigned(
             @Param("empCode") String empCode, 
             @Param("hasEmpScope") boolean hasEmpScope,
             @Param("empCodes") List<String> empCodes,
-            @Param("userId") Long userId);
+            @Param("userId") Long userId,
+            @Param("role") com.stok.anandam.store.core.postgres.model.Role role);
 
     @Query("SELECT m.statusAkhir, COUNT(m.id) FROM Memo m WHERE " +
            "m.marketingEmpCode IS NOT NULL OR " +

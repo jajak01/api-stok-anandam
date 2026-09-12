@@ -42,9 +42,10 @@ public class HutangService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Anda tidak memiliki akses HUTANG");
         }
 
-        // HUTANG mengikuti halaman Pembelian: tanpa scope EMP otomatis (visible utk
-        // pemegang PEMBELIAN). Filter empCode tetap diteruskan bila dikirim user.
-        List<String> filterEmp = (empCodes == null || empCodes.isEmpty()) ? null : empCodes;
+        List<String> scopeFilter = userAuthorizationService.effectiveScopeFilter(aktor, empCodes);
+        if (scopeFilter != null && scopeFilter.isEmpty()) {
+            return emptySummary();
+        }
 
         LocalDate start = (startDateStr != null && !startDateStr.isBlank())
                 ? LocalDate.parse(startDateStr)
@@ -59,10 +60,10 @@ public class HutangService {
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
 
         Page<Purchase> result = purchaseRepository.findHutangRows(
-                start, end, filterEmp, categories, search, searchColumn, isPaid, pageable);
+                start, end, scopeFilter, categories, search, searchColumn, isPaid, pageable);
 
         BigDecimal totalGrand = purchaseRepository.sumHutangGrandTotal(
-                start, end, filterEmp, categories, search, searchColumn, isPaid);
+                start, end, scopeFilter, categories, search, searchColumn, isPaid);
 
         return PurchaseSummaryResponse.<Purchase>builder()
                 .content(result.getContent())
@@ -83,7 +84,10 @@ public class HutangService {
         if (!userAuthorizationService.hasPermission(aktor, Permission.PEMBELIAN)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Anda tidak memiliki akses HUTANG");
         }
-        List<String> filterEmp = (empCodes == null || empCodes.isEmpty()) ? null : empCodes;
+        List<String> scopeFilter = userAuthorizationService.effectiveScopeFilter(aktor, empCodes);
+        if (scopeFilter != null && scopeFilter.isEmpty()) {
+            return List.of();
+        }
 
         LocalDate start = (startDateStr != null && !startDateStr.isBlank())
                 ? LocalDate.parse(startDateStr)
@@ -93,17 +97,35 @@ public class HutangService {
                 : LocalDate.now();
 
         return purchaseRepository.findAllHutangRows(
-                start, end, filterEmp, categories, search, searchColumn, isPaid);
+                start, end, scopeFilter, categories, search, searchColumn, isPaid);
     }
 
     /** Daftar kode karyawan (dari tabel purchases) utk dropdown filter Hutang. */
-    public java.util.List<com.stok.anandam.store.dto.EmployeeOption> getEmployeeOptions() {
+    public java.util.List<com.stok.anandam.store.dto.EmployeeOption> getEmployeeOptions(String username) {
+        User aktor = (username != null && !username.isBlank()) ? userAuthorizationService.requireUser(username) : null;
+        List<String> allowed = aktor != null ? userAuthorizationService.allowedEmpCodes(aktor) : null;
+
         return purchaseRepository.findDistinctEmpCodeAndName().stream()
+                .filter(obj -> {
+                    if (allowed == null) return true;
+                    String code = (String) obj[0];
+                    return code != null && allowed.stream().anyMatch(a -> a.equalsIgnoreCase(code));
+                })
                 .map(obj -> com.stok.anandam.store.dto.EmployeeOption.builder()
                         .empCode((String) obj[0])
                         .empName((String) obj[1])
                         .build())
                 .collect(java.util.stream.Collectors.toList());
+    }
+
+    private PurchaseSummaryResponse<Purchase> emptySummary() {
+        return PurchaseSummaryResponse.<Purchase>builder()
+                .content(List.of())
+                .totalGrandSum(BigDecimal.ZERO)
+                .totalQty(BigDecimal.ZERO)
+                .totalPages(0)
+                .totalElements(0)
+                .build();
     }
 
     public java.util.List<String> getCategories() {

@@ -106,8 +106,16 @@ public class PiutangService {
     }
 
     /** Daftar kode karyawan (dari tabel sales) utk dropdown filter Piutang. */
-    public java.util.List<com.stok.anandam.store.dto.EmployeeOption> getEmployeeOptions() {
+    public java.util.List<com.stok.anandam.store.dto.EmployeeOption> getEmployeeOptions(String username) {
+        User aktor = (username != null && !username.isBlank()) ? userAuthorizationService.requireUser(username) : null;
+        List<String> allowed = aktor != null ? userAuthorizationService.allowedEmpCodes(aktor) : null;
+
         return salesRepository.findDistinctEmpCodeAndName().stream()
+                .filter(obj -> {
+                    if (allowed == null) return true;
+                    String code = (String) obj[0];
+                    return code != null && allowed.stream().anyMatch(a -> a.equalsIgnoreCase(code));
+                })
                 .map(obj -> com.stok.anandam.store.dto.EmployeeOption.builder()
                         .empCode((String) obj[0])
                         .empName((String) obj[1])

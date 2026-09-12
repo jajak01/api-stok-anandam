@@ -77,18 +77,29 @@ public class UserAuthorizationService {
         if (user == null) {
             return null;
         }
-        Set<String> access = user.getEmpCodeAccess();
-        if (access == null || access.isEmpty()) {
+        if (user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER) {
             return null;
         }
+
+        Set<String> access = user.getEmpCodeAccess();
+        String own = user.getEmployeeCode();
+
+        boolean hasAccess = access != null && !access.isEmpty();
+        boolean hasOwn = own != null && !own.trim().isEmpty();
+
+        if (!hasAccess && !hasOwn) {
+            return null;
+        }
+
         LinkedHashSet<String> allowed = new LinkedHashSet<>();
-        for (String code : access) {
-            if (code != null && !code.trim().isEmpty()) {
-                addCaseVariants(allowed, code.trim());
+        if (hasAccess) {
+            for (String code : access) {
+                if (code != null && !code.trim().isEmpty()) {
+                    addCaseVariants(allowed, code.trim());
+                }
             }
         }
-        String own = user.getEmployeeCode();
-        if (own != null && !own.trim().isEmpty()) {
+        if (hasOwn) {
             addCaseVariants(allowed, own.trim());
         }
         return new ArrayList<>(allowed);

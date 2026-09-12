@@ -97,7 +97,8 @@ public class HutangController {
     @GetMapping({"/employee-codes", "/options"})
     public ResponseEntity<WebResponse<java.util.List<com.stok.anandam.store.dto.EmployeeOption>>> getEmployeeCodes(
             Principal principal) {
-        java.util.List<com.stok.anandam.store.dto.EmployeeOption> codes = hutangService.getEmployeeOptions();
+        String username = principal != null ? principal.getName() : null;
+        java.util.List<com.stok.anandam.store.dto.EmployeeOption> codes = hutangService.getEmployeeOptions(username);
         return ResponseEntity.ok(WebResponse.<java.util.List<com.stok.anandam.store.dto.EmployeeOption>>builder()
                 .status(200)
                 .message("Success fetch employee codes")

@@ -310,6 +310,9 @@ public class StockService {
 
                         if (isMarketing) {
                             res.setHargaHpp(null);
+                            res.setModal(null);
+                            res.setGrandTotal(null);
+                            res.setLastPurchasePrice(null);
                         }
                         return res;
                 }).filter(Objects::nonNull).collect(Collectors.toList());
