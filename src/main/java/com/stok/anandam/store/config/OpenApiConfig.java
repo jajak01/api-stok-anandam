@@ -7,30 +7,31 @@ import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
 @Configuration
 public class OpenApiConfig {
 
+    /**
+     * Opsional. Kosong = Swagger UI memakai origin halaman yang sedang dibuka
+     * (localhost, IP LAN, atau domain reverse proxy). Ini mencegah error CORS /
+     * "Failed to fetch" saat tombol "Try it out" dipakai.
+     * Isi hanya jika ingin memaksa server tujuan tertentu, mis.
+     * app.openapi.server-url=http://192.168.1.176:9099
+     */
+    @Value("${app.openapi.server-url:}")
+    private String serverUrl;
+
     @Bean
     public OpenAPI customOpenAPI() {
         final String bearerAuth = "bearerAuth";
 
-        // Server Local untuk development
-        Server localServer = new Server()
-                .url("http://localhost:9099")
-                .description("Local Server (Development)");
-
-        // Server Internal Kantor (IP Local)
-        Server internalServer = new Server()
-                .url("http://192.168.1.176:9099")
-                .description("Internal Server (Kantor)");
-
-        return new OpenAPI()
-                .servers(List.of(localServer, internalServer))
+        OpenAPI openAPI = new OpenAPI()
                 .info(new Info()
                         .title("Store Anandam API")
                         .version("1.0")
@@ -44,5 +45,15 @@ public class OpenApiConfig {
                                         .scheme("bearer")
                                         .bearerFormat("JWT")
                                         .description("Login via POST /api/v1/auth/login, lalu isi token di sini.")));
+
+        // Server eksplisit hanya jika dikonfigurasi. Default: tanpa servers,
+        // sehingga Swagger UI memakai origin halaman itu sendiri (same-origin).
+        if (StringUtils.hasText(serverUrl)) {
+            openAPI.servers(List.of(new Server()
+                    .url(serverUrl)
+                    .description("Server aktif")));
+        }
+
+        return openAPI;
     }
 }

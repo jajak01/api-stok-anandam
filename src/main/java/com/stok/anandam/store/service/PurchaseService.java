@@ -21,6 +21,12 @@ public class PurchaseService {
         private PurchaseRepository purchaseRepository;
 
         @Autowired
+        private PurchaseSearchDao purchaseSearchDao;
+
+        @Autowired
+        private MetadataCache metadataCache;
+
+        @Autowired
         private UserAuthorizationService userAuthorizationService;
 
         /** Backward-compatible entry: no username -> no masking. */
@@ -52,12 +58,24 @@ public class PurchaseService {
                 Sort.Direction direction = dir.equalsIgnoreCase("desc") ? Sort.Direction.DESC : Sort.Direction.ASC;
                 Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
 
-                Page<Purchase> pageResult = purchaseRepository.findByDateRangeAndSearch(start, end, empCodes, categories, search, searchColumn, pageable);
+                // P0: List + Pageable -> tanpa COUNT query terpisah.
+                java.util.List<Purchase> content = new java.util.ArrayList<>(
+                                purchaseSearchDao.findPage(start, end, empCodes, categories, search,
+                                                searchColumn, pageable));
 
-                BigDecimal totalSum = purchaseRepository.sumGrandTotalByDateRange(start, end, empCodes, categories, search, searchColumn);
-                Long totalQty = purchaseRepository.sumQtyByDateRange(start, end, empCodes, categories, search, searchColumn);
+                // P0: COUNT + SUM(grandTotal) + SUM(qty) dalam satu query.
+                Object[] agg = purchaseSearchDao.aggregate(start, end, empCodes, categories, search,
+                                searchColumn);
+                long totalElements = 0L;
+                BigDecimal totalSum = BigDecimal.ZERO;
+                BigDecimal totalQty = BigDecimal.ZERO;
+                if (agg != null && agg.length >= 3) {
+                        totalElements = agg[0] == null ? 0L : ((Number) agg[0]).longValue();
+                        totalSum = agg[1] == null ? BigDecimal.ZERO : new BigDecimal(agg[1].toString());
+                        totalQty = agg[2] == null ? BigDecimal.ZERO : new BigDecimal(agg[2].toString());
+                }
+                int totalPages = size > 0 ? (int) Math.ceil((double) totalElements / size) : 0;
 
-                java.util.List<Purchase> content = new java.util.ArrayList<>(pageResult.getContent());
                 if (username != null) {
                         com.stok.anandam.store.core.postgres.model.User aktor = userAuthorizationService.requireUser(username);
                         if (!userAuthorizationService.canViewPaymentStatus(aktor)) {
@@ -71,9 +89,9 @@ public class PurchaseService {
                 return PurchaseSummaryResponse.<Purchase>builder()
                                 .content(content)
                                 .totalGrandSum(totalSum)
-                                .totalQty(totalQty != null ? BigDecimal.valueOf(totalQty) : BigDecimal.ZERO)
-                                .totalPages(pageResult.getTotalPages())
-                                .totalElements(pageResult.getTotalElements())
+                                .totalQty(totalQty)
+                                .totalPages(totalPages)
+                                .totalElements(totalElements)
                                 .build();
         }
 
@@ -92,10 +110,10 @@ public class PurchaseService {
                                 ? LocalDate.parse(endDateStr)
                                 : LocalDate.now();
 
-                return purchaseRepository.findAllByDateRangeAndSearch(start, end, empCodes, categories, search, searchColumn);
+                return purchaseSearchDao.findAll(start, end, empCodes, categories, search, searchColumn);
         }
 
         public java.util.List<String> getDeptCodes() {
-                return purchaseRepository.findDistinctDepCodes();
+                return metadataCache.get("purchase.dept-codes", () -> purchaseRepository.findDistinctDepCodes());
         }
 }

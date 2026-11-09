@@ -31,6 +31,12 @@ public class PiutangService {
     private SalesRepository salesRepository;
 
     @Autowired
+    private SalesSearchDao salesSearchDao;
+
+    @Autowired
+    private MetadataCache metadataCache;
+
+    @Autowired
     private UserAuthorizationService userAuthorizationService;
 
     public SalesSummaryResponse<Sales> getPiutang(
@@ -60,21 +66,21 @@ public class PiutangService {
         String sortField = (sortBy == null || sortBy.isBlank()) ? "docDate" : sortBy;
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
 
-        Page<Sales> result = salesRepository.findPiutangRows(
+        PagedResult<Sales> result = salesSearchDao.findPiutangPage(
                 start, end, scopeFilter, categories, search, searchColumn, isPaid, pageable);
 
-        BigDecimal totalGrand = salesRepository.sumPiutangGrandTotal(
+        BigDecimal totalGrand = salesSearchDao.sumPiutangGrandTotal(
                 start, end, scopeFilter, categories, search, searchColumn, isPaid);
 
         return SalesSummaryResponse.<Sales>builder()
-                .content(result.getContent())
+                .content(result.content())
                 .totalGrandSum(totalGrand)
                 .totalQty(BigDecimal.ZERO)
                 .totalHpp(BigDecimal.ZERO)
                 .totalLabaKotor(BigDecimal.ZERO)
                 .marginPct(BigDecimal.ZERO)
-                .totalPages(result.getTotalPages())
-                .totalElements(result.getTotalElements())
+                .totalPages(result.totalPages(size))
+                .totalElements(result.totalElements())
                 .build();
     }
 
@@ -101,7 +107,7 @@ public class PiutangService {
                 ? LocalDate.parse(endDateStr)
                 : LocalDate.now();
 
-        return salesRepository.findAllPiutangRows(
+        return salesSearchDao.findAllPiutang(
                 start, end, scopeFilter, categories, search, searchColumn, isPaid);
     }
 
@@ -110,21 +116,24 @@ public class PiutangService {
         User aktor = (username != null && !username.isBlank()) ? userAuthorizationService.requireUser(username) : null;
         List<String> allowed = aktor != null ? userAuthorizationService.allowedEmpCodes(aktor) : null;
 
-        return salesRepository.findDistinctEmpCodeAndName().stream()
-                .filter(obj -> {
+        return metadataCache.get("sales.employee-codes", () ->
+                        salesRepository.findDistinctEmpCodeAndName().stream()
+                                .map(obj -> com.stok.anandam.store.dto.EmployeeOption.builder()
+                                        .empCode((String) obj[0])
+                                        .empName((String) obj[1])
+                                        .build())
+                                .collect(java.util.stream.Collectors.toList()))
+                .stream()
+                .filter(o -> {
                     if (allowed == null) return true;
-                    String code = (String) obj[0];
+                    String code = o.getEmpCode();
                     return code != null && allowed.stream().anyMatch(a -> a.equalsIgnoreCase(code));
                 })
-                .map(obj -> com.stok.anandam.store.dto.EmployeeOption.builder()
-                        .empCode((String) obj[0])
-                        .empName((String) obj[1])
-                        .build())
                 .collect(java.util.stream.Collectors.toList());
     }
 
     public java.util.List<String> getCategories() {
-        return salesRepository.findDistinctDepCodes();
+        return metadataCache.get("sales.dept-codes", () -> salesRepository.findDistinctDepCodes());
     }
 
     private SalesSummaryResponse<Sales> emptySummary() {

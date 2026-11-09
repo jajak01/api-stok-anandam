@@ -13,6 +13,7 @@ import com.stok.anandam.store.dto.UpdateStatusServisRequest;
 import com.stok.anandam.store.dto.TransaksiServisResponse;
 import com.stok.anandam.store.dto.RiwayatServisUserResponse;
 import com.stok.anandam.store.exception.ResourceNotFoundException;
+import com.stok.anandam.store.util.NormalizationUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -22,10 +23,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.stok.anandam.store.dto.KlaimDistributorRekapResponse;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -39,6 +43,9 @@ public class TransaksiServisService {
     private final RiwayatTrackingRepository riwayatRepository;
     private final UserRepository userRepository;
     private final AuditTrailService auditTrailService;
+    private final ServisSnVerificationService servisSnVerificationService;
+    private final ServisPosisiService servisPosisiService;
+    private final ServisPosisiLogService servisPosisiLogService;
 
     @Transactional
     public TransaksiServisResponse buatTransaksiBaru(CreateTransaksiRequest request, String usernamePenerima) {
@@ -62,13 +69,37 @@ public class TransaksiServisService {
         }
 
         // 4. Buat Transaksi
+        String namaBarang = nonBlank(request.getNamaBarang(), combineLegacyItem(request.getJenisBarang(), request.getMerek()));
+        ServisSnVerificationService.Verification sn = servisSnVerificationService.verify(request.getModelSeri());
+        if (sn.verified() && sn.itemName() != null) namaBarang = sn.itemName();
+        String supplier = sn.verified() ? sn.supplier() : request.getSupplierPembelian();
+
+        // Server-side enforcement: nota KLAIM wajib punya nama barang & distributor klaim.
+        if ("KLAIM".equalsIgnoreCase(request.getTipeNota())) {
+            if (namaBarang == null || namaBarang.trim().isEmpty()) {
+                throw new IllegalArgumentException("Nama barang wajib diisi untuk tipe nota KLAIM.");
+            }
+            if (request.getNamaDistributor() == null || request.getNamaDistributor().trim().isEmpty()) {
+                throw new IllegalArgumentException("Nama distributor wajib diisi untuk tipe nota KLAIM.");
+            }
+        }
         TransaksiServis transaksi = TransaksiServis.builder()
                 .noServis(generateNoServis())
                 .pelanggan(pelanggan)
                 .penerima(penerima)
-                .jenisBarang(request.getJenisBarang())
+                // Legacy column remains populated for old clients and its NOT NULL constraint.
+                .jenisBarang(nonBlank(request.getJenisBarang(), namaBarang))
                 .merek(request.getMerek())
                 .modelSeri(request.getModelSeri())
+                .namaBarangStored(namaBarang)
+                .namaBarangNorm(NormalizationUtil.normalizeItemName(namaBarang))
+                .supplierPembelian(supplier)
+                .supplierPembelianNorm(NormalizationUtil.normalizeItemName(supplier))
+                .namaDistributor(request.getNamaDistributor())
+                .namaDistributorNorm(NormalizationUtil.normalizeItemName(request.getNamaDistributor()))
+                .noNotaSupplier(request.getNoNotaSupplier())
+                .snVerified(sn.verified())
+                .snVerifiedAt(sn.verified() ? LocalDateTime.now() : null)
                 .kelengkapan(request.getKelengkapan())
                 .kerusakan(request.getKerusakan())
                 .dp(request.getDp() != null ? request.getDp() : BigDecimal.ZERO)
@@ -77,6 +108,7 @@ public class TransaksiServisService {
                 .statusBayar(StatusPembayaran.BELUM_LUNAS)
                 .build();
         
+        resolveAndLogPosition(transaksi, "Nota dibuat");
         transaksi = transaksiRepository.save(transaksi);
 
         // 5. Audit Log: Catat siapa yang membuat nota servis beserta detail lengkap
@@ -124,6 +156,8 @@ public class TransaksiServisService {
 
         // 4. Update Status (Hanya sekali update)
         transaksi.setStatusTerkini(request.getStatusBaru());
+        servisPosisiService.clearManualOverride(transaksi);
+        resolveAndLogPosition(transaksi, "Status servis berubah");
         
         // --- FIX BUG 2: Update field-field operasional lainnya ---
         if (request.getKondisiServis() != null) transaksi.setKondisiServis(request.getKondisiServis());
@@ -373,9 +407,52 @@ public class TransaksiServisService {
                     .orElseThrow(() -> new ResourceNotFoundException("Pelanggan tidak ditemukan dengan ID: " + request.getPelangganId()));
             transaksi.setPelanggan(pelanggan);
         }
+        boolean serialChanged = request.getModelSeri() != null && !request.getModelSeri().equals(transaksi.getModelSeri());
+        boolean protectedFieldsChanged = (request.getNamaBarang() != null && !request.getNamaBarang().equals(transaksi.getNamaBarang()))
+                || (request.getSupplierPembelian() != null && !request.getSupplierPembelian().equals(transaksi.getSupplierPembelian()));
+        if (Boolean.TRUE.equals(transaksi.getSnVerified()) && protectedFieldsChanged && !serialChanged) {
+            if (!isPrivileged(pengubah)) {
+                throw new IllegalStateException("Nama barang dan supplier terkunci karena serial number telah terverifikasi.");
+            }
+            auditTrailService.logAction("transaksi_servis", transaksiId.toString(),
+                    "UNLOCK_SERVIS_BARANG",
+                    "OVERRIDE_LOCK_SN",
+                    String.format("ADMIN/MANAGER mengubah data terkunci SN pada nota %s. Nama barang: %s -> %s; Supplier: %s -> %s",
+                            transaksi.getNoServis(),
+                            transaksi.getNamaBarang(), request.getNamaBarang(),
+                            transaksi.getSupplierPembelian(), request.getSupplierPembelian()),
+                    usernamePengubah);
+        }
+
         if (request.getJenisBarang() != null) transaksi.setJenisBarang(request.getJenisBarang());
         if (request.getMerek() != null) transaksi.setMerek(request.getMerek());
         if (request.getModelSeri() != null) transaksi.setModelSeri(request.getModelSeri());
+        if (request.getNamaBarang() != null) {
+            transaksi.setNamaBarangStored(request.getNamaBarang());
+            transaksi.setNamaBarangNorm(NormalizationUtil.normalizeItemName(request.getNamaBarang()));
+            transaksi.setJenisBarang(request.getNamaBarang());
+        }
+        if (request.getSupplierPembelian() != null) {
+            transaksi.setSupplierPembelian(request.getSupplierPembelian());
+            transaksi.setSupplierPembelianNorm(NormalizationUtil.normalizeItemName(request.getSupplierPembelian()));
+        }
+        if (request.getNamaDistributor() != null) {
+            transaksi.setNamaDistributor(request.getNamaDistributor());
+            transaksi.setNamaDistributorNorm(NormalizationUtil.normalizeItemName(request.getNamaDistributor()));
+        }
+        if (request.getNoNotaSupplier() != null) transaksi.setNoNotaSupplier(request.getNoNotaSupplier());
+        if (serialChanged) {
+            ServisSnVerificationService.Verification sn = servisSnVerificationService.verify(request.getModelSeri());
+            transaksi.setSnVerified(sn.verified());
+            transaksi.setSnVerifiedAt(sn.verified() ? LocalDateTime.now() : null);
+            if (sn.verified()) {
+                transaksi.setNamaBarangStored(sn.itemName());
+                transaksi.setNamaBarangNorm(NormalizationUtil.normalizeItemName(sn.itemName()));
+                transaksi.setJenisBarang(sn.itemName());
+                transaksi.setSupplierPembelian(sn.supplier());
+                transaksi.setSupplierPembelianNorm(NormalizationUtil.normalizeItemName(sn.supplier()));
+            }
+        }
         if (request.getKelengkapan() != null) transaksi.setKelengkapan(request.getKelengkapan());
         if (request.getKerusakan() != null) transaksi.setKerusakan(request.getKerusakan());
         if (request.getDp() != null) transaksi.setDp(request.getDp());
@@ -390,6 +467,7 @@ public class TransaksiServisService {
                                                   namaPengubah),
                                     usernamePengubah);
 
+        resolveAndLogPosition(transaksi, "Transaksi diedit");
         transaksi = transaksiRepository.save(transaksi);
         return TransaksiServisResponse.fromEntity(transaksi);
     }
@@ -445,6 +523,9 @@ public class TransaksiServisService {
 
         // 4. Ubah Status Transaksi Menjadi Menunggu Pengiriman
         transaksi.setStatusTerkini(StatusServis.KLAIM_MENUNGGU_PENGIRIMAN);
+        syncNamaDistributor(transaksi, request.getNamaDistributor());
+        servisPosisiService.clearManualOverride(transaksi);
+        resolveAndLogPosition(transaksi, "Klaim distributor dibuat");
         transaksiRepository.save(transaksi);
 
         // 5. Catat Riwayat Tracking (Ini yang akan ter-masking otomatis di publik)
@@ -477,6 +558,8 @@ public class TransaksiServisService {
         if (alamatDistributor != null) klaim.setAlamatDistributor(alamatDistributor);
         if (biayaKlaim != null) klaim.setBiayaKlaim(biayaKlaim);
 
+        syncNamaDistributor(transaksi, klaim.getNamaDistributor());
+        transaksiRepository.save(transaksi);
         klaimDistributorRepository.save(klaim);
 
         String namaAdmin2 = admin.getNama() != null ? admin.getNama() : usernameAdmin;
@@ -528,6 +611,8 @@ public class TransaksiServisService {
 
         // 5. Update Status Utama di Transaksi Servis
         transaksi.setStatusTerkini(statusBaru);
+        servisPosisiService.clearManualOverride(transaksi);
+        resolveAndLogPosition(transaksi, "Status klaim berubah");
         transaksiRepository.save(transaksi);
         klaimDistributorRepository.save(klaim);
 
@@ -548,6 +633,140 @@ public class TransaksiServisService {
         String datePart = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
         String randomPart = java.util.UUID.randomUUID().toString().substring(0, 4).toUpperCase();
         return "SRV-" + datePart + "-" + randomPart;
+    }
+
+    private void syncNamaDistributor(TransaksiServis transaksi, String namaDistributor) {
+        transaksi.setNamaDistributor(namaDistributor);
+        transaksi.setNamaDistributorNorm(normalizeDistributor(namaDistributor));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TransaksiServisResponse> getServisByPosisi(String search, String posisi, int page, int size) {
+        Pageable pageable = PageRequest.of(page, Math.min(Math.max(size, 1), 100), Sort.by(Sort.Direction.DESC, "posisiChangedAt"));
+        Specification<TransaksiServis> spec = Specification.where(TransaksiServisSpecification.hasPosisi(posisi))
+                .and(TransaksiServisSpecification.searchByNoServisOrNamaPelanggan(search));
+        return transaksiRepository.findAll(spec, pageable).map(TransaksiServisResponse::fromEntity);
+    }
+
+    /**
+     * Ringkasan jumlah barang aktif per posisi (tab Posisi Barang).
+     * Hanya 3 posisi yang ditampilkan; KELUAR tetap tersimpan untuk riwayat.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Long> getPosisiSummary() {
+        Map<String, Long> summary = new LinkedHashMap<>();
+        summary.put("GUDANG_SERVIS", 0L);
+        summary.put("SUPPLIER", 0L);
+        summary.put("GUDANG_PUSAT", 0L);
+
+        String sql = """
+                SELECT posisi_barang, count(*) AS total
+                FROM transaksi_servis
+                WHERE posisi_barang IN ('GUDANG_SERVIS', 'SUPPLIER', 'GUDANG_PUSAT')
+                GROUP BY posisi_barang
+                """;
+
+        List<Object[]> rows = servisPosisiLogService.query(sql,
+                (rs, rowNum) -> new Object[]{rs.getString("posisi_barang"), rs.getLong("total")});
+        for (Object[] row : rows) {
+            if (row[0] != null) {
+                summary.put(row[0].toString(), (Long) row[1]);
+            }
+        }
+        return summary;
+    }
+
+    @Transactional
+    public TransaksiServisResponse updatePosisiManual(UUID transaksiId, String posisi, String alasan, String username) {
+        String next = posisi == null ? "" : posisi.trim().toUpperCase();
+        if (!List.of("GUDANG_SERVIS", "SUPPLIER", "GUDANG_PUSAT", "KELUAR").contains(next)) {
+            throw new IllegalArgumentException("Posisi barang tidak valid");
+        }
+        if (alasan == null || alasan.isBlank()) throw new IllegalArgumentException("Alasan perubahan posisi wajib diisi");
+        TransaksiServis transaksi = transaksiRepository.findById(transaksiId)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaksi servis tidak ditemukan"));
+        User actor = userRepository.findByUsername(username).orElse(null);
+        String lama = transaksi.getPosisiBarang();
+        transaksi.setPosisiBarang(next);
+        transaksi.setPosisiSumber("MANUAL");
+        transaksi.setPosisiChangedAt(LocalDateTime.now());
+        transaksi.setPosisiChangedBy(actor != null ? actor.getId() : null);
+        transaksi = transaksiRepository.save(transaksi);
+        servisPosisiLogService.write(transaksi.getId(), lama, next, "MANUAL", alasan,
+                actor != null ? actor.getId() : null);
+        auditTrailService.logAction("transaksi_servis", transaksiId.toString(), "UBAH_POSISI_BARANG",
+                "POSISI_DIUBAH_MANUAL", "Posisi " + lama + " menjadi " + next + ". Alasan: " + alasan, username);
+        return TransaksiServisResponse.fromEntity(transaksi);
+    }
+
+    @Transactional(readOnly = true)
+    public List<com.stok.anandam.store.dto.ServisPosisiLogResponse> getPosisiLog(UUID transaksiId) {
+        if (!transaksiRepository.existsById(transaksiId)) {
+            throw new ResourceNotFoundException("Transaksi servis tidak ditemukan");
+        }
+        return servisPosisiLogService.findByTransaksiId(transaksiId);
+    }
+
+    private void resolveAndLogPosition(TransaksiServis transaksi, String alasan) {
+        String lama = transaksi.getPosisiBarang();
+        if (servisPosisiService.resolve(transaksi)) {
+            // ID can be null for a new note; the initial position is already captured by migration.
+            if (transaksi.getId() != null) writePosisiLog(transaksi.getId(), lama, transaksi.getPosisiBarang(), "AUTO", alasan);
+        }
+    }
+
+    private void writePosisiLog(UUID transaksiId, String lama, String baru, String sumber, String alasan) {
+        servisPosisiLogService.write(transaksiId, lama, baru, sumber, alasan);
+    }
+
+    private static String combineLegacyItem(String jenisBarang, String merek) {
+        String combined = ((jenisBarang == null ? "" : jenisBarang) + " " + (merek == null ? "" : merek)).trim();
+        return combined.isEmpty() ? "-" : combined.replaceAll("\\s+", " ");
+    }
+
+    private static String nonBlank(String preferred, String fallback) {
+        return preferred != null && !preferred.isBlank() ? preferred.trim() : fallback;
+    }
+
+    private static String normalizeDistributor(String value) {
+        return value == null ? "" : value.trim().toUpperCase().replaceAll("\\s+", " ");
+    }
+
+    private static boolean isPrivileged(User user) {
+        return user != null && (user.getRole() == Role.ADMIN || user.getRole() == Role.MANAGER);
+    }
+
+    @Transactional(readOnly = true)
+    public List<KlaimDistributorRekapResponse> getRekapKlaim(String mode, String search) {
+        boolean semua = "SEMUA".equalsIgnoreCase(mode);
+        String term = search == null ? "" : search.trim().toUpperCase();
+        String sql = """
+                SELECT nama_distributor_norm, min(nama_distributor) AS nama_distributor,
+                       count(*) FILTER (WHERE posisi_barang = 'SUPPLIER') AS di_distributor,
+                       count(*) AS total_klaim
+                FROM transaksi_servis
+                WHERE nama_distributor IS NOT NULL AND btrim(nama_distributor) <> ''
+                  AND (? = '' OR nama_distributor_norm LIKE ?)
+                  AND (? OR posisi_barang = 'SUPPLIER')
+                GROUP BY nama_distributor_norm
+                ORDER BY di_distributor DESC, nama_distributor
+                """;
+        return servisPosisiLogService.query(sql, (rs, row) -> new KlaimDistributorRekapResponse(
+                rs.getString("nama_distributor"), rs.getString("nama_distributor_norm"),
+                rs.getLong("di_distributor"), rs.getLong("total_klaim")), term, "%" + term + "%", semua);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TransaksiServisResponse> getKlaimDistributorDetail(String distributorNorm, String search, String mode, int page, int size) {
+        Pageable pageable = PageRequest.of(page, Math.min(Math.max(size, 1), 100), Sort.by(Sort.Direction.DESC, "createdAt"));
+        Specification<TransaksiServis> spec = Specification.where(TransaksiServisSpecification.hasDistributorNorm(distributorNorm))
+                .and(TransaksiServisSpecification.searchByNoServisOrNamaPelanggan(search));
+        if (mode != null && "AKTIF".equalsIgnoreCase(mode.trim())) {
+            spec = spec.and(TransaksiServisSpecification.hasPosisi("SUPPLIER"));
+        }
+        Page<TransaksiServisResponse> results = transaksiRepository.findAll(spec, pageable).map(TransaksiServisResponse::fromEntity);
+        enrichWithKlaimData(results.getContent());
+        return results;
     }
 
     private void validateStatusTransition(StatusServis statusLama, StatusServis statusBaru) {

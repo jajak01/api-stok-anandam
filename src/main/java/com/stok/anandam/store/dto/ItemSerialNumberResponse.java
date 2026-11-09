@@ -16,4 +16,8 @@ public class ItemSerialNumberResponse {
     private String user;
     private String itemName;
     private String sn;
+    /** Supplier pembelian (purchases.par_name) untuk dokumen MASUK. */
+    private String supplier;
+    /** Tipe dokumen SN: MASUK / KELUAR. */
+    private String docType;
 }

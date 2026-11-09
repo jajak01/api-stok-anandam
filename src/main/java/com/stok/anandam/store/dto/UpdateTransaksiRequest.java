@@ -9,6 +9,10 @@ public class UpdateTransaksiRequest {
     private UUID pelangganId;
     private String jenisBarang;
     private String merek;
+    private String namaBarang;
+    private String supplierPembelian;
+    private String namaDistributor;
+    private String noNotaSupplier;
     private String modelSeri;
     private String kelengkapan;
     private String kerusakan;

@@ -26,7 +26,79 @@ public class PostgresSchemaInitializer {
         addSalesProfitabilityColumns();
         addPricelistNormalizedColumn();
         initUserPermissionsTable();
+        initServisV3Schema();
+        initSearchPerformanceIndexes();
         log.info("=== POSTGRESQL DATABASE SCHEMA INITIALIZATION COMPLETED ===");
+    }
+
+    /**
+     * Index pendukung pencarian (P0 — 8 Nov 2026).
+     *
+     * Semua query list memakai pola {@code LOWER(kolom) LIKE '%kata%'} sehingga
+     * hanya index trigram (pg_trgm) yang bisa dipakai; urutan tanggal juga butuh
+     * B-Tree. Dibuat dengan CONCURRENTLY supaya tidak mengunci tabel saat
+     * aplikasi start. Idempotent: index yang sudah ada dilewati.
+     *
+     * Catatan: pembuatan pertama pada tabel besar bisa memakan beberapa menit.
+     * Jika pg_trgm belum tersedia, index trigram dilewati (search tetap jalan,
+     * hanya memakai sequential scan).
+     */
+    private void initSearchPerformanceIndexes() {
+        log.info("Checking search performance indexes...");
+        boolean trigram = true;
+        try {
+            pgJdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+        } catch (Exception e) {
+            trigram = false;
+            log.warn("pg_trgm tidak tersedia; index trigram dilewati: {}", e.getMessage());
+        }
+
+        java.util.List<String> ddl = new java.util.ArrayList<>();
+        // ================= PENJUALAN =================
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sales_doc_date ON sales (doc_date DESC)");
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sales_emp_date ON sales (emp_code, doc_date DESC)");
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sales_dep_date ON sales (dep_code, doc_date DESC)");
+        // ================= PEMBELIAN =================
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_purchases_doc_date ON purchases (doc_date DESC)");
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_purchases_docno_btrim ON purchases (btrim(doc_no_p))");
+        // ================= ITEM SN =================
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_isn_type_date ON item_serial_numbers (upper(type), tanggal DESC)");
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_isn_sn_norm ON item_serial_numbers (upper(btrim(sn)))");
+        // ================= DATA WAREHOUSE =================
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_old_sales_doc_date ON old_sales (doc_date DESC)");
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_old_purchase_doc_date ON old_purchase (doc_date DESC)");
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_old_item_sn_date ON old_item_serial_numbers (tanggal DESC)");
+        // P1: exact-match verifikasi SN (BL lama) — ekspresi sama dengan query.
+        ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_old_item_sn_sn_norm ON old_item_serial_numbers (upper(btrim(sn)))");
+
+        if (trigram) {
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sales_docno_trgm ON sales USING gin (lower(doc_no) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sales_parname_trgm ON sales USING gin (lower(par_name) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sales_itemname_trgm ON sales USING gin (lower(item_name) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_purchases_docno_trgm ON purchases USING gin (lower(doc_no_p) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_purchases_parname_trgm2 ON purchases USING gin (lower(par_name) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_purchases_itemname_trgm ON purchases USING gin (lower(item_name) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_isn_sn_trgm ON item_serial_numbers USING gin (lower(sn) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_isn_docid_trgm ON item_serial_numbers USING gin (lower(doc_id) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_isn_itemname_trgm ON item_serial_numbers USING gin (lower(item_name) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_old_sales_search_trgm ON old_sales USING gin (" +
+                    "lower(coalesce(doc_no,'') || ' ' || coalesce(par_name,'') || ' ' || coalesce(item_name,'')) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_old_purchase_search_trgm ON old_purchase USING gin (" +
+                    "lower(coalesce(doc_no_p,'') || ' ' || coalesce(par_name,'') || ' ' || coalesce(item_name,'')) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_old_item_sn_sn_trgm ON old_item_serial_numbers USING gin (lower(sn) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_old_item_sn_docid_trgm ON old_item_serial_numbers USING gin (lower(doc_id) gin_trgm_ops)");
+            ddl.add("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_old_item_sn_itemname_trgm ON old_item_serial_numbers USING gin (lower(item_name) gin_trgm_ops)");
+        }
+
+        for (String sql : ddl) {
+            try {
+                pgJdbcTemplate.execute(sql);
+            } catch (Exception e) {
+                // Jangan gagalkan startup hanya karena satu index (mis. tabel belum ada).
+                log.warn("Gagal membuat index: {} ({})", sql, e.getMessage());
+            }
+        }
+        log.info("Search performance indexes checked ({} statements).", ddl.size());
     }
 
     private void addPricelistNormalizedColumn() {
@@ -106,6 +178,133 @@ public class PostgresSchemaInitializer {
             log.info("Successfully completed legacy MemoStatus migration.");
         } catch (Exception e) {
             log.error("Failed to migrate legacy MemoStatus: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Skema aditif v3 (Servis): kolom baru, master barang, alias supplier,
+     * log posisi, dan fungsi normalisasi. Idempotent; tidak melakukan backfill
+     * berat saat startup (backfill dijalankan terpisah di F1).
+     */
+    private void initServisV3Schema() {
+        log.info("Checking servis v3 schema...");
+        try {
+            pgJdbcTemplate.execute(
+                "ALTER TABLE transaksi_servis " +
+                "ADD COLUMN IF NOT EXISTS nama_barang VARCHAR(500), " +
+                "ADD COLUMN IF NOT EXISTS nama_barang_norm VARCHAR(500), " +
+                "ADD COLUMN IF NOT EXISTS supplier_pembelian VARCHAR(200), " +
+                "ADD COLUMN IF NOT EXISTS supplier_pembelian_norm VARCHAR(200), " +
+                "ADD COLUMN IF NOT EXISTS nama_distributor VARCHAR(200), " +
+                "ADD COLUMN IF NOT EXISTS nama_distributor_norm VARCHAR(200), " +
+                "ADD COLUMN IF NOT EXISTS no_nota_supplier VARCHAR(100), " +
+                "ADD COLUMN IF NOT EXISTS posisi_barang VARCHAR(30), " +
+                "ADD COLUMN IF NOT EXISTS posisi_sumber VARCHAR(10) DEFAULT 'AUTO', " +
+                "ADD COLUMN IF NOT EXISTS posisi_changed_at TIMESTAMPTZ, " +
+                "ADD COLUMN IF NOT EXISTS posisi_changed_by UUID, " +
+                "ADD COLUMN IF NOT EXISTS sn_verified BOOLEAN DEFAULT false, " +
+                "ADD COLUMN IF NOT EXISTS sn_verified_at TIMESTAMPTZ"
+            );
+
+            pgJdbcTemplate.execute(
+                "ALTER TABLE distributor " +
+                "ADD COLUMN IF NOT EXISTS normalized_name VARCHAR(200), " +
+                "ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true"
+            );
+
+            pgJdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS master_barang (" +
+                "  id BIGSERIAL PRIMARY KEY, " +
+                "  nama_tampil VARCHAR(500) NOT NULL, " +
+                "  normalized_name VARCHAR(500) NOT NULL UNIQUE, " +
+                "  sumber VARCHAR(20), " +
+                "  jumlah_pakai BIGINT DEFAULT 0, " +
+                "  last_seen_at TIMESTAMPTZ, " +
+                "  is_manual BOOLEAN DEFAULT false, " +
+                "  is_active BOOLEAN DEFAULT true" +
+                ")"
+            );
+
+            // Tanpa FK ke distributor: tabel distributor di-TRUNCATE oleh sync CSV.
+            pgJdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS distributor_alias (" +
+                "  id BIGSERIAL PRIMARY KEY, " +
+                "  distributor_id BIGINT NOT NULL, " +
+                "  alias VARCHAR(200) NOT NULL, " +
+                "  alias_norm VARCHAR(200) NOT NULL UNIQUE, " +
+                "  created_at TIMESTAMPTZ DEFAULT now()" +
+                ")"
+            );
+
+            pgJdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS servis_posisi_log (" +
+                "  id BIGSERIAL PRIMARY KEY, " +
+                "  transaksi_id UUID NOT NULL REFERENCES transaksi_servis(id), " +
+                "  posisi_lama VARCHAR(30), " +
+                "  posisi_baru VARCHAR(30) NOT NULL, " +
+                "  sumber VARCHAR(10) NOT NULL, " +
+                "  alasan TEXT, " +
+                "  changed_by BIGINT, " +
+                "  created_at TIMESTAMPTZ DEFAULT now()" +
+                ")"
+            );
+
+            // users.id is BIGINT, not UUID. Migrate the early v3 columns if they
+            // were created as UUID so the actor id can be stored consistently.
+            pgJdbcTemplate.execute(
+                "DO $$ BEGIN " +
+                "IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='transaksi_servis' " +
+                "AND column_name='posisi_changed_by' AND data_type='uuid') THEN " +
+                "ALTER TABLE transaksi_servis ALTER COLUMN posisi_changed_by TYPE BIGINT USING NULL; END IF; " +
+                "END $$;"
+            );
+            pgJdbcTemplate.execute(
+                "DO $$ BEGIN " +
+                "IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='servis_posisi_log' " +
+                "AND column_name='changed_by' AND data_type='uuid') THEN " +
+                "ALTER TABLE servis_posisi_log ALTER COLUMN changed_by TYPE BIGINT USING NULL; END IF; " +
+                "END $$;"
+            );
+
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_master_barang_prefix ON master_barang (normalized_name text_pattern_ops)");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_master_barang_seen ON master_barang (last_seen_at DESC)");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_distributor_alias_norm ON distributor_alias (alias_norm)");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_posisi_log_transaksi ON servis_posisi_log (transaksi_id, created_at DESC)");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_posisi_log_posisi ON servis_posisi_log (posisi_baru, created_at)");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_servis_nama_barang_norm ON transaksi_servis (nama_barang_norm text_pattern_ops)");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_servis_supplier_norm ON transaksi_servis (supplier_pembelian_norm text_pattern_ops)");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_servis_distributor_norm ON transaksi_servis (nama_distributor_norm)");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_servis_posisi ON transaksi_servis (posisi_barang)");
+
+            pgJdbcTemplate.execute(
+                "CREATE OR REPLACE FUNCTION movva_normalize_item(txt text) " +
+                "RETURNS text LANGUAGE sql IMMUTABLE AS $$ " +
+                "  SELECT btrim(regexp_replace(" +
+                "           regexp_replace(" +
+                "             replace(replace(upper(coalesce(txt,'')), chr(8482), ''), chr(174), ''), " +
+                "             '[^A-Z0-9 ]', ' ', 'g'), " +
+                "         '\\s+', ' ', 'g')); " +
+                "$$"
+            );
+
+            // Expression index untuk saran supplier per nama barang (query < 20 ms).
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_purchases_norm_item ON purchases (movva_normalize_item(item_name))");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_old_purchase_norm_item ON old_purchase (movva_normalize_item(item_name))");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_purchases_parname_upper ON purchases (upper(btrim(par_name)) text_pattern_ops)");
+            pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_old_purchase_parname_upper ON old_purchase (upper(btrim(par_name)) text_pattern_ops)");
+
+            // Index trigram untuk fallback contains pada saran supplier.
+            try {
+                pgJdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+                pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_purchases_parname_trgm ON purchases USING gin (upper(btrim(par_name)) gin_trgm_ops)");
+                pgJdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_old_purchase_parname_trgm ON old_purchase USING gin (upper(btrim(par_name)) gin_trgm_ops)");
+            } catch (Exception e) {
+                log.warn("pg_trgm tidak tersedia; fallback contains memakai seq scan: {}", e.getMessage());
+            }
+
+            log.info("Successfully checked/added servis v3 schema.");
+        } catch (Exception e) {
+            log.error("Failed to initialize servis v3 schema: {}", e.getMessage());
         }
     }
 

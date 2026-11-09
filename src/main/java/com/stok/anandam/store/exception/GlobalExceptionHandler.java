@@ -121,6 +121,23 @@ public class GlobalExceptionHandler {
                                 .build());
         }
 
+        // 5b. Konflik status / aturan bisnis (409) — mis. edit nota yang terkunci SN
+        @ExceptionHandler(IllegalStateException.class)
+        public ResponseEntity<WebResponse<ApiErrorResponse>> handleIllegalState(IllegalStateException ex,
+                        HttpServletRequest request) {
+                ApiErrorResponse error = new ApiErrorResponse(
+                                HttpStatus.CONFLICT.value(),
+                                "Conflict",
+                                ex.getMessage(),
+                                request.getRequestURI());
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(WebResponse.<ApiErrorResponse>builder()
+                                .status(HttpStatus.CONFLICT.value())
+                                .message(ex.getMessage())
+                                .data(error)
+                                .paging(null)
+                                .build());
+        }
+
         // 5a. Format tanggal tidak valid (startDate/endDate) (400)
         @ExceptionHandler(DateTimeParseException.class)
         public ResponseEntity<WebResponse<ApiErrorResponse>> handleDateTimeParse(DateTimeParseException ex,

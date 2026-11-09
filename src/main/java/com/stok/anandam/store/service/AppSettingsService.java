@@ -11,10 +11,11 @@ import java.math.RoundingMode;
 /**
  * Setting aplikasi key-value. Khususnya:
  * HARGA_BUTTOM_PERSEN = persentase tambahan untuk menghitung hargaButtom
- * (harga jual dasar untuk marketing) dari hargaHpp:
- *   hargaButtom = hargaHpp + (hargaHpp * percent / 100)
+ * (harga jual dasar untuk marketing) dari Modal Final (pricelist.modal):
+ *   hargaButtom = Modal Final + (Modal Final * percent / 100)
  *
- * Default 3 (%) bila belum pernah disimpan. Nilai bisa diubah kapan saja via
+ * Fallback ke hargaHpp hanya bila Modal Final tidak tersedia. Default 3 (%)
+ * bila belum pernah disimpan. Nilai bisa diubah kapan saja via
  * PUT /api/v1/stocks/harga-buttom-percent (ADMIN/MANAGER).
  */
 @Service

@@ -58,6 +58,12 @@ public class TransaksiServisSpecification {
                 fieldPredicates.add(criteriaBuilder.like(
                         criteriaBuilder.lower(root.get("merek")), pattern));
 
+                fieldPredicates.add(criteriaBuilder.like(
+                        criteriaBuilder.lower(root.get("namaBarangStored")), pattern));
+
+                fieldPredicates.add(criteriaBuilder.like(
+                        criteriaBuilder.lower(root.get("namaDistributor")), pattern));
+
                 // LIKE pada namaPelanggan
                 fieldPredicates.add(criteriaBuilder.like(
                         criteriaBuilder.lower(pelangganJoin.get("namaPelanggan")), pattern));
@@ -114,6 +120,19 @@ public class TransaksiServisSpecification {
             }
             return criteriaBuilder.equal(root.get("statusTerkini"), status);
         };
+    }
+
+    public static Specification<TransaksiServis> hasPosisi(String posisi) {
+        return (root, query, criteriaBuilder) -> {
+            if (posisi == null || posisi.isBlank()) {
+                return root.get("posisiBarang").in("GUDANG_SERVIS", "SUPPLIER", "GUDANG_PUSAT");
+            }
+            return criteriaBuilder.equal(root.get("posisiBarang"), posisi.trim().toUpperCase());
+        };
+    }
+
+    public static Specification<TransaksiServis> hasDistributorNorm(String distributorNorm) {
+        return (root, query, criteriaBuilder) -> criteriaBuilder.equal(root.get("namaDistributorNorm"), distributorNorm);
     }
 
     /**

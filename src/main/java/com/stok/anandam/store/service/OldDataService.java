@@ -37,6 +37,9 @@ public class OldDataService {
         @Autowired
         private OldItemSnRepository oldItemSnRepository;
 
+        @Autowired
+        private MetadataCache metadataCache;
+
         public SalesSummaryResponse<OldSales> getSales(
                         int page, int size, String sortBy, String dir,
                         String startDateStr, String endDateStr, String empCode, String search) {
@@ -109,29 +112,31 @@ public class OldDataService {
         }
 
         public java.util.List<String> getEmployeeCodes() {
-                return oldSalesRepository.findDistinctEmpCodeOrderByEmpCode();
+                return metadataCache.get("old.employee-codes", () -> oldSalesRepository.findDistinctEmpCodeOrderByEmpCode());
         }
 
         public java.util.Map<String, Object> getDateRangeMeta() {
-                java.util.Map<String, Object> meta = new java.util.HashMap<>();
+                return metadataCache.get("old.meta", () -> {
+                        java.util.Map<String, Object> meta = new java.util.HashMap<>();
 
-                int salesMax = oldSalesRepository.findMaxDocDate()
-                                .map(d -> d.getYear())
-                                .orElse(java.time.LocalDate.now().getYear());
+                        int salesMax = oldSalesRepository.findMaxDocDate()
+                                        .map(d -> d.getYear())
+                                        .orElse(java.time.LocalDate.now().getYear());
 
-                int purchaseMax = oldPurchaseRepository.findMaxDocDate()
-                                .map(d -> d.getYear())
-                                .orElse(java.time.LocalDate.now().getYear());
+                        int purchaseMax = oldPurchaseRepository.findMaxDocDate()
+                                        .map(d -> d.getYear())
+                                        .orElse(java.time.LocalDate.now().getYear());
 
-                int itemSnMax = oldItemSnRepository.findMaxTanggal()
-                                .map(dt -> dt.getYear())
-                                .orElse(java.time.LocalDate.now().getYear());
+                        int itemSnMax = oldItemSnRepository.findMaxTanggal()
+                                        .map(dt -> dt.getYear())
+                                        .orElse(java.time.LocalDate.now().getYear());
 
-                meta.put("salesMaxYear", salesMax);
-                meta.put("purchaseMaxYear", purchaseMax);
-                meta.put("itemSnMaxYear", itemSnMax);
-                meta.put("minYear", 2016);
-                return meta;
+                        meta.put("salesMaxYear", salesMax);
+                        meta.put("purchaseMaxYear", purchaseMax);
+                        meta.put("itemSnMaxYear", itemSnMax);
+                        meta.put("minYear", 2016);
+                        return meta;
+                });
         }
 
         // ==================== LAPORAN OMSET PER MARKETING (OLD SALES) ====================

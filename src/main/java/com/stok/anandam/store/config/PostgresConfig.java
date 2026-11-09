@@ -36,8 +36,14 @@ public class PostgresConfig {
     @Value("${spring.datasource.pg.driver-class-name}")
     private String driverClassName;
 
-    @Value("${spring.datasource.pg.maximum-pool-size:10}")
+    @Value("${spring.datasource.pg.maximum-pool-size:20}")
     private int maximumPoolSize;
+
+    @Value("${spring.datasource.pg.minimum-idle:5}")
+    private int minimumIdle;
+
+    @Value("${spring.datasource.pg.connection-timeout:5000}")
+    private long connectionTimeout;
 
     @Value("${spring.datasource.pg.max-lifetime:1800000}")
     private long maxLifetime;
@@ -51,6 +57,8 @@ public class PostgresConfig {
         ds.setPassword(password);
         ds.setDriverClassName(driverClassName);
         ds.setMaximumPoolSize(maximumPoolSize);
+        ds.setMinimumIdle(minimumIdle);
+        ds.setConnectionTimeout(connectionTimeout);
         ds.setMaxLifetime(maxLifetime);
         ds.setPoolName("HikariPool-Postgres");
         return ds;

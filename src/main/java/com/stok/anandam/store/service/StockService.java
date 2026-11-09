@@ -58,16 +58,25 @@ public class StockService {
         @org.springframework.beans.factory.annotation.Qualifier("pgJdbcTemplate")
         private org.springframework.jdbc.core.JdbcTemplate pgJdbcTemplate;
 
+        /**
+         * HPP (harga_hpp) dan Modal Final (pricelist.modal) adalah data biaya internal.
+         * Hanya SPV (semua divisi), ADMIN, dan MANAGER yang boleh menerimanya dari API.
+         */
+        private static boolean canViewCost(Role role) {
+                if (role == null)
+                        return false;
+                return role == Role.ADMIN
+                                || role == Role.MANAGER
+                                || role.name().startsWith("SPV");
+        }
+
         public Page<StockGroupedResponse> getGroupedStocks(int page, int size, String sortBy, String direction,
                         String search, List<String> categories, String username) {
                 User user = userRepository.findByUsername(username)
                                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
                 Role role = user.getRole();
-                boolean isMarketing = role == Role.MARKETING ||
-                                role == Role.MARKETING_TOKO ||
-                                role == Role.MARKETING_PROJECT ||
-                                role == Role.MARKETING_DISTRIBUSI ||
-                                role == Role.MARKETING_ONLINE;
+                // HPP & Modal Final hanya untuk SPV, ADMIN, dan MANAGER.
+                boolean canSeeCost = canViewCost(role);
 
                 // Map nama distributor -> entitas distributor (untuk menentukan PPN / NON PPN)
                 Map<String, Distributor> distributorByName = buildDistributorMap();
@@ -259,16 +268,6 @@ public class StockService {
                         String trimmedName = displayStock.getItemName() != null ? displayStock.getItemName().trim() : "";
                         String lookupKey = trimmedName.toLowerCase();
 
-                        // hargaButtom = hargaHpp + (hargaHpp * percent / 100)
-                        BigDecimal hpp = displayStock.getHargaHpp();
-                        BigDecimal hargaButtom = null;
-                        if (hpp != null) {
-                            BigDecimal percent = appSettingsService.getHargaButtomPercent();
-                            BigDecimal factor = percent.add(new BigDecimal("100"))
-                                    .divide(new BigDecimal("100"), 6, java.math.RoundingMode.HALF_UP);
-                            hargaButtom = hpp.multiply(factor).setScale(2, java.math.RoundingMode.HALF_UP);
-                        }
-
                         List<WarehouseStockDTO> warehouses = stocks.stream()
                                         .map(s -> WarehouseStockDTO.builder()
                                                          .warehouse(s.getWarehouse())
@@ -284,6 +283,20 @@ public class StockService {
 
                         com.stok.anandam.store.core.postgres.model.Pricelist priceInfo = pricelistMap
                                         .get(trimmedName);
+
+                        // Harga Buttom = Modal Final + (Modal Final * percent / 100).
+                        // Fallback ke HPP hanya bila Modal Final tidak tersedia (barang tanpa pricelist).
+                        BigDecimal modalFinal = priceInfo != null ? priceInfo.getModal() : null;
+                        BigDecimal hargaButtomBase = (modalFinal != null && modalFinal.signum() > 0)
+                                        ? modalFinal
+                                        : displayStock.getHargaHpp();
+                        BigDecimal hargaButtom = null;
+                        if (hargaButtomBase != null && hargaButtomBase.signum() > 0) {
+                                BigDecimal percent = appSettingsService.getHargaButtomPercent();
+                                BigDecimal factor = percent.add(new BigDecimal("100"))
+                                                .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
+                                hargaButtom = hargaButtomBase.multiply(factor).setScale(2, RoundingMode.HALF_UP);
+                        }
 
                         StockGroupedResponse res = StockGroupedResponse.builder()
                                         .id(displayStock.getId())
@@ -308,7 +321,7 @@ public class StockService {
                                          .pendingDetails(new ArrayList<>()) // Default
                                          .build();
 
-                        if (isMarketing) {
+                        if (!canSeeCost) {
                             res.setHargaHpp(null);
                             res.setModal(null);
                             res.setGrandTotal(null);
@@ -500,11 +513,8 @@ public class StockService {
                 User user = userRepository.findByUsername(username)
                                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
                 Role role = user.getRole();
-                boolean isMarketing = role == Role.MARKETING ||
-                                role == Role.MARKETING_TOKO ||
-                                role == Role.MARKETING_PROJECT ||
-                                role == Role.MARKETING_DISTRIBUSI ||
-                                role == Role.MARKETING_ONLINE;
+                // HPP & Modal Final hanya untuk SPV, ADMIN, dan MANAGER.
+                boolean canSeeCost = canViewCost(role);
 
                 Stock stock = stockRepository.findById(id)
                                 .orElseThrow(() -> new ResourceNotFoundException("Stock not found with id: " + id));
@@ -536,8 +546,11 @@ public class StockService {
                         stock.setFinalPricelist(p.getFinalPricelist());
                 });
 
-                if (isMarketing) {
+                if (!canSeeCost) {
                         stock.setHargaHpp(null);
+                        stock.setModal(null);
+                        stock.setGrandTotal(null);
+                        stock.setLastPurchasePrice(null);
                 }
 
                 // Tentukan PPN / NON PPN dari distributor pembelian terakhir item ini

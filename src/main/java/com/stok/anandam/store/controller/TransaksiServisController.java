@@ -179,6 +179,54 @@ public class TransaksiServisController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/posisi")
+    public ResponseEntity<Map<String, Object>> getByPosisi(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String posisi,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Page<TransaksiServisResponse> result = transaksiService.getServisByPosisi(search, posisi, page, size);
+        return ResponseEntity.ok(Map.of("content", result.getContent(), "totalElements", result.getTotalElements(),
+                "totalPages", result.getTotalPages(), "number", result.getNumber(), "size", result.getSize()));
+    }
+
+    @GetMapping("/posisi/summary")
+    public ResponseEntity<Map<String, Long>> getPosisiSummary() {
+        return ResponseEntity.ok(transaksiService.getPosisiSummary());
+    }
+
+    @GetMapping("/{transaksiId}/posisi-log")
+    public ResponseEntity<List<com.stok.anandam.store.dto.ServisPosisiLogResponse>> getPosisiLog(
+            @PathVariable UUID transaksiId) {
+        return ResponseEntity.ok(transaksiService.getPosisiLog(transaksiId));
+    }
+
+    @GetMapping("/klaim/rekap")
+    public ResponseEntity<List<com.stok.anandam.store.dto.KlaimDistributorRekapResponse>> getRekapKlaim(
+            @RequestParam(defaultValue = "AKTIF") String mode,
+            @RequestParam(required = false) String search) {
+        return ResponseEntity.ok(transaksiService.getRekapKlaim(mode, search));
+    }
+
+    @GetMapping("/klaim/rekap/{namaDistributorNorm}")
+    public ResponseEntity<Map<String, Object>> getDetailRekapKlaim(
+            @PathVariable String namaDistributorNorm,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "SEMUA") String mode,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Page<TransaksiServisResponse> result = transaksiService.getKlaimDistributorDetail(namaDistributorNorm, search, mode, page, size);
+        return ResponseEntity.ok(Map.of("content", result.getContent(), "totalElements", result.getTotalElements(),
+                "totalPages", result.getTotalPages(), "number", result.getNumber(), "size", result.getSize()));
+    }
+
+    @PutMapping("/{transaksiId}/posisi")
+    public ResponseEntity<TransaksiServisResponse> updatePosisi(
+            @PathVariable UUID transaksiId,
+            @Valid @RequestBody com.stok.anandam.store.dto.UpdatePosisiServisRequest request) {
+        return ResponseEntity.ok(transaksiService.updatePosisiManual(transaksiId, request.getPosisi(), request.getAlasan(), getCurrentUsername()));
+    }
+
     /**
      * GET /api/v1/klaim-distributor/by-transaksi/{transaksiId}
      * Mendapatkan data klaim distributor berdasarkan transaksi ID.

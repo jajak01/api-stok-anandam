@@ -30,6 +30,12 @@ public class HutangService {
     private PurchaseRepository purchaseRepository;
 
     @Autowired
+    private PurchaseSearchDao purchaseSearchDao;
+
+    @Autowired
+    private MetadataCache metadataCache;
+
+    @Autowired
     private UserAuthorizationService userAuthorizationService;
 
     public PurchaseSummaryResponse<Purchase> getHutang(
@@ -59,18 +65,18 @@ public class HutangService {
         String sortField = (sortBy == null || sortBy.isBlank()) ? "docDate" : sortBy;
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortField));
 
-        Page<Purchase> result = purchaseRepository.findHutangRows(
+        PagedResult<Purchase> result = purchaseSearchDao.findHutangPage(
                 start, end, scopeFilter, categories, search, searchColumn, isPaid, pageable);
 
-        BigDecimal totalGrand = purchaseRepository.sumHutangGrandTotal(
+        BigDecimal totalGrand = purchaseSearchDao.sumHutangGrandTotal(
                 start, end, scopeFilter, categories, search, searchColumn, isPaid);
 
         return PurchaseSummaryResponse.<Purchase>builder()
-                .content(result.getContent())
+                .content(result.content())
                 .totalGrandSum(totalGrand)
                 .totalQty(BigDecimal.ZERO)
-                .totalPages(result.getTotalPages())
-                .totalElements(result.getTotalElements())
+                .totalPages(result.totalPages(size))
+                .totalElements(result.totalElements())
                 .build();
     }
 
@@ -96,7 +102,7 @@ public class HutangService {
                 ? LocalDate.parse(endDateStr)
                 : LocalDate.now();
 
-        return purchaseRepository.findAllHutangRows(
+        return purchaseSearchDao.findAllHutang(
                 start, end, scopeFilter, categories, search, searchColumn, isPaid);
     }
 
@@ -105,16 +111,19 @@ public class HutangService {
         User aktor = (username != null && !username.isBlank()) ? userAuthorizationService.requireUser(username) : null;
         List<String> allowed = aktor != null ? userAuthorizationService.allowedEmpCodes(aktor) : null;
 
-        return purchaseRepository.findDistinctEmpCodeAndName().stream()
-                .filter(obj -> {
+        return metadataCache.get("purchase.employee-codes", () ->
+                        purchaseRepository.findDistinctEmpCodeAndName().stream()
+                                .map(obj -> com.stok.anandam.store.dto.EmployeeOption.builder()
+                                        .empCode((String) obj[0])
+                                        .empName((String) obj[1])
+                                        .build())
+                                .collect(java.util.stream.Collectors.toList()))
+                .stream()
+                .filter(o -> {
                     if (allowed == null) return true;
-                    String code = (String) obj[0];
+                    String code = o.getEmpCode();
                     return code != null && allowed.stream().anyMatch(a -> a.equalsIgnoreCase(code));
                 })
-                .map(obj -> com.stok.anandam.store.dto.EmployeeOption.builder()
-                        .empCode((String) obj[0])
-                        .empName((String) obj[1])
-                        .build())
                 .collect(java.util.stream.Collectors.toList());
     }
 
@@ -129,6 +138,6 @@ public class HutangService {
     }
 
     public java.util.List<String> getCategories() {
-        return purchaseRepository.findDistinctDepCodes();
+        return metadataCache.get("purchase.dept-codes", () -> purchaseRepository.findDistinctDepCodes());
     }
 }

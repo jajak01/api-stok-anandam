@@ -154,6 +154,14 @@ public class SecurityConfig {
                                         .requestMatchers("/api/v1/delivery", "/api/v1/delivery/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "PENGIRIMAN", "ROLE_DELIVERY", "ROLE_GUDANG")
 
                                         // SERVIS
+                                        // Posisi Barang: TEKNISI + ADMIN/MANAGER + permission khusus
+                                        .requestMatchers("/api/v1/servis/posisi", "/api/v1/servis/posisi/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SERVIS_POSISI", "ROLE_TEKNISI", "TEKNISI")
+                                        .requestMatchers(HttpMethod.GET, "/api/v1/transaksi-servis/posisi").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SERVIS_POSISI", "ROLE_TEKNISI", "TEKNISI")
+                                        .requestMatchers(HttpMethod.GET, "/api/v1/transaksi-servis/posisi/summary").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SERVIS_POSISI", "ROLE_TEKNISI", "TEKNISI")
+                                        .requestMatchers(HttpMethod.PUT, "/api/v1/transaksi-servis/*/posisi").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SERVIS_POSISI", "ROLE_TEKNISI", "TEKNISI")
+                                        .requestMatchers(HttpMethod.GET, "/api/v1/transaksi-servis/*/posisi-log").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SERVIS_POSISI", "ROLE_TEKNISI", "TEKNISI")
+                                        // Saran master & endpoint servis v3 lainnya
+                                        .requestMatchers("/api/v1/servis/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SERVIS", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI", "TEKNISI")
                                         .requestMatchers("/api/v1/transaksi-servis/**", "/api/v1/pelanggan-servis/**", "/api/v1/laporan-servis/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_MANAGER", "SERVIS", "ROLE_SPV_TEKNISI", "ROLE_TEKNISI", "TEKNISI")
 
                                         // PEMBELIAN & PENJUALAN

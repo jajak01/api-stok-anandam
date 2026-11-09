@@ -34,6 +34,7 @@ public class Permission {
 
     // Servis & Perbaikan
     public static final String SERVIS = "SERVIS";
+    public static final String SERVIS_POSISI = "SERVIS_POSISI";
 
     // Lokasi & Tracking
     public static final String LOCATION_TRACK = "LOCATION_TRACK";

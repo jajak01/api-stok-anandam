@@ -48,7 +48,7 @@ public class StockController {
         }
 
         /**
-         * PUT ubah persen hargaButtom (mis. 3 artinya +3% dari HPP).
+         * PUT ubah persen hargaButtom (mis. 3 artinya +3% dari Modal Final).
          * Body: {"percent": 5}
          * Hanya ADMIN/MANAGER (dijaga di SecurityConfig).
          */
@@ -175,13 +175,8 @@ public class StockController {
         // FITUR 3: Detail Stok (Get By ID)
         @GetMapping("/{id}")
         public ResponseEntity<WebResponse<Stock>> getStockDetail(@PathVariable(name = "id") Long id, java.security.Principal principal) {
+                // Penyembunyian HPP/Modal Final dilakukan di StockService (role-based).
                 Stock stock = stockService.getSingleStockDetail(id, principal.getName());
-                
-                // Hide HPP for detail if marketing
-                if (stock != null) {
-                    // Logic inside service is preferred, but Stock is an Entity. 
-                    // Let's check StockService implementation first.
-                }
 
                 return ResponseEntity.ok(WebResponse.<Stock>builder()
                                 .status(200)

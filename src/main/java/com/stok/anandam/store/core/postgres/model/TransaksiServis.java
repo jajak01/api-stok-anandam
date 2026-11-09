@@ -51,6 +51,45 @@ public class TransaksiServis {
     @Column(name = "model_seri_lama")
     private String modelSeriLama;
 
+    @Column(name = "nama_barang")
+    private String namaBarangStored;
+
+    @Column(name = "nama_barang_norm")
+    private String namaBarangNorm;
+
+    @Column(name = "supplier_pembelian")
+    private String supplierPembelian;
+
+    @Column(name = "supplier_pembelian_norm")
+    private String supplierPembelianNorm;
+
+    @Column(name = "nama_distributor")
+    private String namaDistributor;
+
+    @Column(name = "nama_distributor_norm")
+    private String namaDistributorNorm;
+
+    @Column(name = "no_nota_supplier")
+    private String noNotaSupplier;
+
+    @Column(name = "posisi_barang")
+    private String posisiBarang;
+
+    @Column(name = "posisi_sumber")
+    private String posisiSumber;
+
+    @Column(name = "posisi_changed_at")
+    private LocalDateTime posisiChangedAt;
+
+    @Column(name = "posisi_changed_by")
+    private Long posisiChangedBy;
+
+    @Column(name = "sn_verified")
+    private Boolean snVerified;
+
+    @Column(name = "sn_verified_at")
+    private LocalDateTime snVerifiedAt;
+
     @Column(columnDefinition = "text")
     private String kelengkapan;
 
@@ -132,15 +171,14 @@ public class TransaksiServis {
     }
 
     public String getNamaBarang() {
+        if (namaBarangStored != null && !namaBarangStored.trim().isEmpty()) {
+            return namaBarangStored;
+        }
         StringBuilder sb = new StringBuilder();
         if (jenisBarang != null) sb.append(jenisBarang);
         if (merek != null && !merek.trim().isEmpty()) {
             if (sb.length() > 0) sb.append(" ");
             sb.append(merek);
-        }
-        if (modelSeri != null && !modelSeri.trim().isEmpty()) {
-            if (sb.length() > 0) sb.append(" ");
-            sb.append(modelSeri);
         }
         return sb.length() > 0 ? sb.toString() : "-";
     }

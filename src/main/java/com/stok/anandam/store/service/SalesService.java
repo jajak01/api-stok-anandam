@@ -36,6 +36,12 @@ public class SalesService {
         private SalesRepository salesRepository;
 
         @Autowired
+        private SalesSearchDao salesSearchDao;
+
+        @Autowired
+        private MetadataCache metadataCache;
+
+        @Autowired
         private UserAuthorizationService userAuthorizationService;
 
         /** Backward-compatible entry: no username -> full visibility, no masking. */
@@ -79,16 +85,28 @@ public class SalesService {
                 Sort.Direction direction = dir.equalsIgnoreCase("asc") ? Sort.Direction.ASC : Sort.Direction.DESC;
                 Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
 
-                // 3. Ambil Data
-                Page<Sales> pageResult = salesRepository.findByFilters(start, end, scopeFilter, categories, search, searchColumn, pageable);
+                // 3. Ambil Data — List + Pageable: Spring Data tidak menjalankan COUNT terpisah.
+                List<Sales> content = new java.util.ArrayList<>(
+                                salesSearchDao.findPage(start, end, scopeFilter, categories, search, searchColumn,
+                                                pageable));
 
-                // 4. Ambil Total Sum
-                BigDecimal totalSum = salesRepository.sumGrandTotalByFilters(start, end, scopeFilter, categories, search, searchColumn);
-                Long totalQty = salesRepository.sumQtyByFilters(start, end, scopeFilter, categories, search, searchColumn);
-                BigDecimal totalHpp = salesRepository.sumTotalHppByFilters(start, end, scopeFilter, categories, search, searchColumn);
-                BigDecimal totalLaba = salesRepository.sumLabaKotorByFilters(start, end, scopeFilter, categories, search, searchColumn);
+                // 4. Total (COUNT + 4 SUM) dalam SATU query (sebelumnya 4 query terpisah).
+                Object[] agg = salesSearchDao.aggregate(start, end, scopeFilter, categories, search,
+                                searchColumn);
+                long totalElements = 0L;
+                BigDecimal totalSum = BigDecimal.ZERO;
+                BigDecimal totalQty = BigDecimal.ZERO;
+                BigDecimal totalHpp = BigDecimal.ZERO;
+                BigDecimal totalLaba = BigDecimal.ZERO;
+                if (agg != null && agg.length >= 5) {
+                        totalElements = agg[0] == null ? 0L : ((Number) agg[0]).longValue();
+                        totalSum = num(agg[1]);
+                        totalQty = num(agg[2]);
+                        totalHpp = num(agg[3]);
+                        totalLaba = num(agg[4]);
+                }
+                int totalPages = size > 0 ? (int) Math.ceil((double) totalElements / size) : 0;
 
-                List<Sales> content = new java.util.ArrayList<>(pageResult.getContent());
                 if (maskPayment) {
                         for (Sales s : content) {
                                 s.setPaidTotal(null);
@@ -100,12 +118,12 @@ public class SalesService {
                 return SalesSummaryResponse.<Sales>builder()
                                 .content(content)
                                 .totalGrandSum(totalSum)
-                                .totalQty(totalQty != null ? BigDecimal.valueOf(totalQty) : BigDecimal.ZERO)
-                                .totalHpp(totalHpp != null ? totalHpp : BigDecimal.ZERO)
-                                .totalLabaKotor(totalLaba != null ? totalLaba : BigDecimal.ZERO)
+                                .totalQty(totalQty)
+                                .totalHpp(totalHpp)
+                                .totalLabaKotor(totalLaba)
                                 .marginPct(marginPct(totalSum, totalLaba))
-                                .totalPages(pageResult.getTotalPages())
-                                .totalElements(pageResult.getTotalElements())
+                                .totalPages(totalPages)
+                                .totalElements(totalElements)
                                 .build();
         }
 
@@ -131,7 +149,7 @@ public class SalesService {
                         return new java.util.ArrayList<>();
                 }
 
-                return salesRepository.findAllByFilters(start, end, scopeFilter, categories, search, searchColumn);
+                return salesSearchDao.findAll(start, end, scopeFilter, categories, search, searchColumn);
         }
 
         private SalesSummaryResponse<Sales> emptySummary() {
@@ -159,16 +177,17 @@ public class SalesService {
         }
 
         public java.util.List<com.stok.anandam.store.dto.EmployeeOption> getEmployeeCodes() {
-                return salesRepository.findDistinctEmpCodeAndName().stream()
-                                .map(obj -> com.stok.anandam.store.dto.EmployeeOption.builder()
-                                                .empCode((String) obj[0])
-                                                .empName((String) obj[1])
-                                                .build())
-                                .collect(java.util.stream.Collectors.toList());
+                return metadataCache.get("sales.employee-codes", () ->
+                                salesRepository.findDistinctEmpCodeAndName().stream()
+                                                .map(obj -> com.stok.anandam.store.dto.EmployeeOption.builder()
+                                                                .empCode((String) obj[0])
+                                                                .empName((String) obj[1])
+                                                                .build())
+                                                .collect(java.util.stream.Collectors.toList()));
         }
 
         public java.util.List<String> getDeptCodes() {
-                return salesRepository.findDistinctDepCodes();
+                return metadataCache.get("sales.dept-codes", () -> salesRepository.findDistinctDepCodes());
         }
 
         /**

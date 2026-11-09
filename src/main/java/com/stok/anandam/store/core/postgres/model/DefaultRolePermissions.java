@@ -33,6 +33,7 @@ public class DefaultRolePermissions {
             Permission.DATA_WAREHOUSE,
             Permission.DATA_CANVAS,
             Permission.SERVIS,
+            Permission.SERVIS_POSISI,
             Permission.USERS,
             Permission.USER_ACTIVITY,
             Permission.ACTIVITY_LOG,
@@ -118,6 +119,7 @@ public class DefaultRolePermissions {
             case TEKNISI:
                 perms.add(Permission.DASHBOARD);
                 perms.add(Permission.SERVIS);
+                perms.add(Permission.SERVIS_POSISI);
                 perms.add(Permission.ITEM_SN);
                 perms.add(Permission.MEMO);
                 perms.add(Permission.PENGIRIMAN);

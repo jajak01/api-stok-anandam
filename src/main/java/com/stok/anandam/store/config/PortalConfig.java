@@ -29,6 +29,12 @@ public class PortalConfig {
     @Value("${spring.datasource.portal.hikari.maximum-pool-size:5}")
     private int maximumPoolSize;
 
+    @Value("${spring.datasource.portal.hikari.minimum-idle:2}")
+    private int minimumIdle;
+
+    @Value("${spring.datasource.portal.hikari.connection-timeout:5000}")
+    private long connectionTimeout;
+
     @Bean(name = "portalDataSource")
     public DataSource portalDataSource() {
         com.zaxxer.hikari.HikariDataSource ds = new com.zaxxer.hikari.HikariDataSource();
@@ -37,6 +43,8 @@ public class PortalConfig {
         ds.setPassword(password);
         ds.setDriverClassName(driverClassName);
         ds.setMaximumPoolSize(maximumPoolSize);
+        ds.setMinimumIdle(minimumIdle);
+        ds.setConnectionTimeout(connectionTimeout);
         ds.setPoolName("HikariPool-Portal");
         return ds;
     }

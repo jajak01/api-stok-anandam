@@ -34,6 +34,15 @@ public class TransaksiServisResponse {
     // Barang Info
     private String jenisBarang;
     private String merek;
+    private String namaBarang;
+    private String supplierPembelian;
+    private String namaDistributor;
+    private String noNotaSupplier;
+    private String posisiBarang;
+    private String posisiSumber;
+    private LocalDateTime posisiChangedAt;
+    private Boolean snVerified;
+    private LocalDateTime snVerifiedAt;
     private String modelSeri;
     private String modelSeriLama;
     private String kelengkapan;
@@ -129,6 +138,15 @@ public class TransaksiServisResponse {
                 
                 .jenisBarang(transaksi.getJenisBarang())
                 .merek(transaksi.getMerek())
+                .namaBarang(transaksi.getNamaBarang())
+                .supplierPembelian(transaksi.getSupplierPembelian())
+                .namaDistributor(transaksi.getNamaDistributor())
+                .noNotaSupplier(transaksi.getNoNotaSupplier())
+                .posisiBarang(transaksi.getPosisiBarang())
+                .posisiSumber(transaksi.getPosisiSumber())
+                .posisiChangedAt(transaksi.getPosisiChangedAt())
+                .snVerified(Boolean.TRUE.equals(transaksi.getSnVerified()))
+                .snVerifiedAt(transaksi.getSnVerifiedAt())
                 .modelSeri(transaksi.getModelSeri())
                 .modelSeriLama(transaksi.getModelSeriLama())
                 .kelengkapan(transaksi.getKelengkapan())
