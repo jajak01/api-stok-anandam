@@ -35,10 +35,7 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("Store Anandam API")
                         .version("1.0")
-                        .description("API untuk aplikasi Stok Anandam - Hanya akses localhost / IP Internal Kantor. "
-                                + "Semua error memakai wrapper {status, message, data, paging}. "
-                                + "Kode error auth: INVALID_CREDENTIALS, ACCOUNT_DEACTIVATED, TOKEN_EXPIRED, "
-                                + "INVALID_REFRESH_TOKEN, VALIDATION_ERROR, INTERNAL_ERROR.")
+                        .description("API untuk aplikasi Stok Anandam - Hanya akses localhost / IP Internal Kantor")
                         .contact(new Contact().name("Store Anandam")))
                 .addSecurityItem(new SecurityRequirement().addList(bearerAuth))
                 .components(new Components()

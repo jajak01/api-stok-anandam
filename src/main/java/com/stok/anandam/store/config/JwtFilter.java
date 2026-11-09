@@ -8,7 +8,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -33,9 +32,6 @@ public class JwtFilter extends OncePerRequestFilter {
 
     @Autowired
     private com.stok.anandam.store.core.postgres.repository.UserRepository userRepository;
-
-    @Autowired
-    private JsonErrorWriter errorWriter;
 
     /** Skip JWT untuk path publik agar tidak parse token / hit DB (optimal). */
     @Override
@@ -71,8 +67,10 @@ public class JwtFilter extends OncePerRequestFilter {
             } catch (ExpiredJwtException e) {
                 // Token expired → kembalikan 401 agar Flutter bisa trigger refresh/logout
                 log.debug("JWT expired: {}", e.getMessage());
-                errorWriter.write(request, response, HttpStatus.UNAUTHORIZED,
-                        JsonAuthenticationEntryPoint.CODE, JsonAuthenticationEntryPoint.MESSAGE);
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write(
+                        "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Token expired\"}");
                 return; // Hentikan filter chain, jangan lanjut ke controller
             } catch (Exception e) {
                 log.debug("JWT parse error: {}", e.getMessage());
@@ -89,8 +87,10 @@ public class JwtFilter extends OncePerRequestFilter {
                 // Cek apakah user aktif/enabled
                 if (!userDetails.isEnabled()) {
                     log.debug("User is disabled: {}", username);
-                    errorWriter.write(request, response, HttpStatus.FORBIDDEN,
-                            "ACCOUNT_DEACTIVATED", "Akun Anda telah dinonaktifkan. Silakan hubungi admin.");
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write(
+                            "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Akun Anda telah dinonaktifkan. Silakan hubungi admin.\"}");
                     return;
                 }
 
@@ -105,9 +105,10 @@ public class JwtFilter extends OncePerRequestFilter {
                             java.time.Instant revokedInstant = userEntity.getSessionsRevokedAt().atZone(java.time.ZoneId.systemDefault()).toInstant();
                             if (issuedInstant.isBefore(revokedInstant)) {
                                 log.debug("Session revoked for user: {}", username);
-                                errorWriter.write(request, response, HttpStatus.UNAUTHORIZED,
-                                        JsonAuthenticationEntryPoint.CODE,
-                                        "Sesi Anda telah berakhir. Silakan login kembali.");
+                                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                                response.setContentType("application/json");
+                                response.getWriter().write(
+                                        "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Sesi Anda telah berakhir. Silakan login kembali.\"}");
                                 return;
                             }
                         }
@@ -124,8 +125,10 @@ public class JwtFilter extends OncePerRequestFilter {
                 }
             } catch (org.springframework.security.core.userdetails.UsernameNotFoundException e) {
                 log.debug("User not found / deleted: {}", username);
-                errorWriter.write(request, response, HttpStatus.UNAUTHORIZED,
-                        "TOKEN_INVALID", "User tidak ditemukan atau sesi telah berakhir");
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write(
+                        "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"User tidak ditemukan atau sesi telah berakhir\"}");
                 return;
             }
         }
