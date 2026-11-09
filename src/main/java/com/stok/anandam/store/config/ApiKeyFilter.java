@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -22,6 +23,12 @@ public class ApiKeyFilter extends OncePerRequestFilter {
     @Value("${app.internal-api-key:CHANGE_ME_TO_A_RANDOM_SECRET}")
     private String validApiKey;
 
+    private final JsonErrorWriter errorWriter;
+
+    public ApiKeyFilter(JsonErrorWriter errorWriter) {
+        this.errorWriter = errorWriter;
+    }
+
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // Hanya filter untuk path /api/v1/internal/**
@@ -37,10 +44,8 @@ public class ApiKeyFilter extends OncePerRequestFilter {
         String apiKey = request.getHeader("X-Internal-Key");
 
         if (apiKey == null || !apiKey.equals(validApiKey)) {
-            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            response.setContentType("application/json");
-            response.getWriter().write(
-                    "{\"status\":403,\"message\":\"Invalid or missing API Key\"}");
+            errorWriter.write(request, response, HttpStatus.FORBIDDEN,
+                    "INVALID_API_KEY", "Invalid or missing API Key");
             return;
         }
 

@@ -20,7 +20,6 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 
 @Configuration
@@ -29,10 +28,16 @@ public class SecurityConfig {
 
         private final UserDetailsService userDetailsService;
         private final JwtFilter jwtFilter;
+        private final JsonAuthenticationEntryPoint authenticationEntryPoint;
+        private final JsonAccessDeniedHandler accessDeniedHandler;
 
-        public SecurityConfig(UserDetailsService userDetailsService, JwtFilter jwtFilter) {
+        public SecurityConfig(UserDetailsService userDetailsService, JwtFilter jwtFilter,
+                        JsonAuthenticationEntryPoint authenticationEntryPoint,
+                        JsonAccessDeniedHandler accessDeniedHandler) {
                 this.userDetailsService = userDetailsService;
                 this.jwtFilter = jwtFilter;
+                this.authenticationEntryPoint = authenticationEntryPoint;
+                this.accessDeniedHandler = accessDeniedHandler;
         }
 
         @Bean
@@ -97,18 +102,8 @@ public class SecurityConfig {
 
                                 // --- PENANGANAN ERROR AUTH/AUTHZ ---
                                 .exceptionHandling(exception -> exception
-                                                .authenticationEntryPoint((request, response, authException) -> {
-                                                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                                                        response.setContentType("application/json");
-                                                        response.getWriter().write(
-                                                                        "{\"code\": \"TOKEN_EXPIRED\", \"message\": \"Sesi habis atau token tidak valid\"}");
-                                                })
-                                                .accessDeniedHandler((request, response, accessDeniedException) -> {
-                                                        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-                                                        response.setContentType("application/json");
-                                                        response.getWriter().write(
-                                                                        "{\"code\": \"ACCESS_DENIED\", \"message\": \"Anda tidak memiliki izin akses fitur ini\"}");
-                                                }))
+                                                .authenticationEntryPoint(authenticationEntryPoint)
+                                                .accessDeniedHandler(accessDeniedHandler))
 
                                 .authorizeHttpRequests(auth -> auth
                                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()

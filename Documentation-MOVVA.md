@@ -403,10 +403,34 @@ All REST endpoints return standardized JSON payloads:
 **Error Response (`401 Unauthorized`):**
 ```json
 {
-  "code": "INVALID_CREDENTIALS",
-  "message": "Username atau password salah"
+  "status": 401,
+  "message": "Username atau password salah",
+  "data": {
+    "code": "INVALID_CREDENTIALS",
+    "error": "Unauthorized",
+    "fieldErrors": {},
+    "path": "/api/v1/auth/login",
+    "status": 401,
+    "timestamp": "2026-11-10T05:44:06.214093659"
+  },
+  "paging": null
 }
 ```
+
+> Username tidak dikenal dan password salah selalu memakai pesan yang sama
+> (`INVALID_CREDENTIALS`) untuk mencegah user enumeration.
+> `500` hanya dikembalikan untuk error tak terduga (DB down, timeout, dll).
+
+**Kontrak status code login:**
+
+| Kondisi | HTTP | `data.code` |
+|---|---:|---|
+| Sukses | 200 | — |
+| Field tidak lengkap | 400 | `VALIDATION_ERROR` |
+| Username/password salah | 401 | `INVALID_CREDENTIALS` |
+| Akun dinonaktifkan | 403 | `ACCOUNT_DEACTIVATED` |
+| Terlalu banyak percobaan (jika rate limiting aktif) | 429 | `TOO_MANY_ATTEMPTS` |
+| Error tak terduga | 500 | `INTERNAL_ERROR` |
 
 ---
 
@@ -435,9 +459,66 @@ All REST endpoints return standardized JSON payloads:
 }
 ```
 
+**Error Response (`401 Unauthorized`):**
+```json
+{
+  "status": 401,
+  "message": "Refresh token tidak ditemukan atau tidak valid",
+  "data": {
+    "code": "INVALID_REFRESH_TOKEN",
+    "error": "Unauthorized",
+    "fieldErrors": {},
+    "path": "/api/v1/auth/refresh",
+    "status": 401,
+    "timestamp": "2026-11-10T05:45:02.177942708"
+  },
+  "paging": null
+}
+```
+
 ---
 
-#### 3. Biometric Challenge Request
+#### 3. Heartbeat Status Online
+* **Method & Route:** `POST /api/v1/auth/heartbeat`
+* **Auth Level:** Authenticated
+* **Headers:** `Authorization: Bearer <accessToken>`
+
+Client mengirim heartbeat secara berkala (mis. tiap 25 detik). Backend memperbarui
+`lastActivity` dan user dianggap online selama heartbeat terakhir <= 60 detik.
+
+**Success Response (`200 OK`):**
+```json
+{
+  "status": 200,
+  "message": "Heartbeat OK",
+  "data": "OK",
+  "paging": null
+}
+```
+
+**Error Response (`401 Unauthorized`) — token tidak ada / expired:**
+```json
+{
+  "status": 401,
+  "message": "Sesi habis atau token tidak valid",
+  "data": {
+    "code": "TOKEN_EXPIRED",
+    "error": "Unauthorized",
+    "fieldErrors": {},
+    "path": "/api/v1/auth/heartbeat",
+    "status": 401,
+    "timestamp": "2026-11-10T05:44:23.000000"
+  },
+  "paging": null
+}
+```
+
+Client sebaiknya melakukan refresh token saat menerima `TOKEN_EXPIRED`, bukan
+langsung logout paksa.
+
+---
+
+#### 4. Biometric Challenge Request
 * **Method & Route:** `POST /api/v1/biometric/challenge`
 * **Auth Level:** Public
 

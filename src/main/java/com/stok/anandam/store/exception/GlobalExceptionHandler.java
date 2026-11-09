@@ -10,13 +10,18 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
+import org.springframework.security.authentication.LockedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.security.access.AccessDeniedException;
 
 import java.time.format.DateTimeParseException;
 import java.util.Map;
@@ -27,21 +32,15 @@ public class GlobalExceptionHandler {
 
         private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+        private static final String MSG_BAD_CREDENTIALS = "Username atau password salah";
+        private static final String MSG_ACCOUNT_DEACTIVATED = "Akun Anda telah dinonaktifkan. Silakan hubungi admin.";
+        private static final String MSG_INTERNAL_ERROR = "Terjadi kesalahan internal pada server. Silakan hubungi admin.";
+
         // 1. Handle Data Tidak Ditemukan (404)
         @ExceptionHandler(ResourceNotFoundException.class)
         public ResponseEntity<WebResponse<ApiErrorResponse>> handleResourceNotFound(ResourceNotFoundException ex,
                         HttpServletRequest request) {
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.NOT_FOUND.value(),
-                                "Not Found",
-                                ex.getMessage(),
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(HttpStatus.NOT_FOUND.value())
-                                .message(ex.getMessage())
-                                .data(error)
-                                .paging(null)
-                                .build());
+                return buildResponse(HttpStatus.NOT_FOUND, "NOT_FOUND", "Not Found", ex.getMessage(), request, null);
         }
 
         // 2. Handle Error Database (Contoh: Duplicate Entry, Kolom Kepanjangan) (409)
@@ -52,18 +51,7 @@ public class GlobalExceptionHandler {
                 if (ex.getRootCause() != null) {
                         message = ex.getRootCause().getMessage();
                 }
-
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.CONFLICT.value(),
-                                "Database Conflict",
-                                message,
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.CONFLICT).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(HttpStatus.CONFLICT.value())
-                                .message(message)
-                                .data(error)
-                                .paging(null)
-                                .build());
+                return buildResponse(HttpStatus.CONFLICT, "DATA_CONFLICT", "Database Conflict", message, request, null);
         }
 
         // 3. Handle Tipe Data Salah di URL (Contoh: ?page=abc padahal harus int) (400)
@@ -72,18 +60,7 @@ public class GlobalExceptionHandler {
                         HttpServletRequest request) {
                 String message = String.format("Parameter '%s' harus berupa tipe '%s'",
                                 ex.getName(), ex.getRequiredType().getSimpleName());
-
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.BAD_REQUEST.value(),
-                                "Bad Request",
-                                message,
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(HttpStatus.BAD_REQUEST.value())
-                                .message(message)
-                                .data(error)
-                                .paging(null)
-                                .build());
+                return buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Bad Request", message, request, null);
         }
 
         // 4. Handle Parameter Kurang (400)
@@ -91,51 +68,23 @@ public class GlobalExceptionHandler {
         public ResponseEntity<WebResponse<ApiErrorResponse>> handleMissingParams(
                         MissingServletRequestParameterException ex, HttpServletRequest request) {
                 String message = "Parameter wajib '" + ex.getParameterName() + "' tidak ditemukan.";
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.BAD_REQUEST.value(),
-                                "Missing Parameter",
-                                message,
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(HttpStatus.BAD_REQUEST.value())
-                                .message(message)
-                                .data(error)
-                                .paging(null)
-                                .build());
+                return buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Missing Parameter", message, request,
+                                null);
         }
 
         // 5. Handle Argument tidak valid dari service (400)
         @ExceptionHandler(IllegalArgumentException.class)
         public ResponseEntity<WebResponse<ApiErrorResponse>> handleIllegalArgument(IllegalArgumentException ex,
                         HttpServletRequest request) {
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.BAD_REQUEST.value(),
-                                "Bad Request",
-                                ex.getMessage(),
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(HttpStatus.BAD_REQUEST.value())
-                                .message(ex.getMessage())
-                                .data(error)
-                                .paging(null)
-                                .build());
+                return buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Bad Request", ex.getMessage(), request,
+                                null);
         }
 
         // 5b. Konflik status / aturan bisnis (409) — mis. edit nota yang terkunci SN
         @ExceptionHandler(IllegalStateException.class)
         public ResponseEntity<WebResponse<ApiErrorResponse>> handleIllegalState(IllegalStateException ex,
                         HttpServletRequest request) {
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.CONFLICT.value(),
-                                "Conflict",
-                                ex.getMessage(),
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.CONFLICT).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(HttpStatus.CONFLICT.value())
-                                .message(ex.getMessage())
-                                .data(error)
-                                .paging(null)
-                                .build());
+                return buildResponse(HttpStatus.CONFLICT, "CONFLICT", "Conflict", ex.getMessage(), request, null);
         }
 
         // 5a. Format tanggal tidak valid (startDate/endDate) (400)
@@ -143,17 +92,7 @@ public class GlobalExceptionHandler {
         public ResponseEntity<WebResponse<ApiErrorResponse>> handleDateTimeParse(DateTimeParseException ex,
                         HttpServletRequest request) {
                 String message = "Format tanggal tidak valid. Gunakan dd-MM-yyyy (contoh: 15-01-2024).";
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.BAD_REQUEST.value(),
-                                "Bad Request",
-                                message,
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(HttpStatus.BAD_REQUEST.value())
-                                .message(message)
-                                .data(error)
-                                .paging(null)
-                                .build());
+                return buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Bad Request", message, request, null);
         }
 
         // 5c. Handle JSON Syntax / Enum Typo (400)
@@ -162,37 +101,55 @@ public class GlobalExceptionHandler {
                         HttpServletRequest request) {
                 String message = "Format JSON tidak valid atau ada kesalahan penulisan (Typo).";
                 if (ex.getMessage() != null && ex.getMessage().contains("Enum")) {
-                    message = "Kesalahan penulisan status/enum. Silakan cek kembali pilihan status yang diizinkan.";
+                        message = "Kesalahan penulisan status/enum. Silakan cek kembali pilihan status yang diizinkan.";
                 }
-
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.BAD_REQUEST.value(),
-                                "Bad Request",
-                                message,
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(HttpStatus.BAD_REQUEST.value())
-                                .message(message)
-                                .data(error)
-                                .paging(null)
-                                .build());
+                return buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Bad Request", message, request, null);
         }
 
-        // 5b. Handle Invalid Refresh Token (401)
+        // 5d. Handle Invalid Refresh Token (401)
         @ExceptionHandler(InvalidRefreshTokenException.class)
         public ResponseEntity<WebResponse<ApiErrorResponse>> handleInvalidRefreshToken(InvalidRefreshTokenException ex,
                         HttpServletRequest request) {
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.UNAUTHORIZED.value(),
-                                "Unauthorized",
-                                ex.getMessage(),
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(HttpStatus.UNAUTHORIZED.value())
-                                .message(ex.getMessage())
-                                .data(error)
-                                .paging(null)
-                                .build());
+                return buildResponse(HttpStatus.UNAUTHORIZED, "INVALID_REFRESH_TOKEN", "Unauthorized",
+                                ex.getMessage(), request, null);
+        }
+
+        // 5e. Kredensial salah — password salah maupun username tidak dikenal (401).
+        // Pesan sengaja disamakan untuk mencegah user enumeration.
+        @ExceptionHandler(BadCredentialsException.class)
+        public ResponseEntity<WebResponse<ApiErrorResponse>> handleBadCredentials(BadCredentialsException ex,
+                        HttpServletRequest request) {
+                log.warn("Authentication failed: path={}, ip={}, reason=BAD_CREDENTIALS",
+                                request.getRequestURI(), getClientIp(request));
+                return buildResponse(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Unauthorized",
+                                MSG_BAD_CREDENTIALS, request, null);
+        }
+
+        // 5f. Akun dinonaktifkan / terkunci (403)
+        @ExceptionHandler({ DisabledException.class, LockedException.class })
+        public ResponseEntity<WebResponse<ApiErrorResponse>> handleAccountStatus(AuthenticationException ex,
+                        HttpServletRequest request) {
+                log.warn("Authentication failed: path={}, ip={}, reason=ACCOUNT_DEACTIVATED",
+                                request.getRequestURI(), getClientIp(request));
+                return buildResponse(HttpStatus.FORBIDDEN, "ACCOUNT_DEACTIVATED", "Forbidden",
+                                MSG_ACCOUNT_DEACTIVATED, request, null);
+        }
+
+        // 5g. Fallback untuk AuthenticationException lain (mis. token/credential tidak valid).
+        // Kegagalan infrastruktur saat memuat user (DB down) tetap dipetakan ke 500.
+        @ExceptionHandler(AuthenticationException.class)
+        public ResponseEntity<WebResponse<ApiErrorResponse>> handleAuthenticationException(AuthenticationException ex,
+                        HttpServletRequest request) {
+                if (ex instanceof InternalAuthenticationServiceException) {
+                        log.error("Unexpected authentication service error at {}: {}",
+                                        request.getRequestURI(), ex.getMessage(), ex);
+                        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
+                                        "Internal Server Error", MSG_INTERNAL_ERROR, request, null);
+                }
+                log.warn("Authentication failed: path={}, ip={}, reason={}",
+                                request.getRequestURI(), getClientIp(request), ex.getClass().getSimpleName());
+                return buildResponse(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "Unauthorized",
+                                MSG_BAD_CREDENTIALS, request, null);
         }
 
         // 6. Handle Validasi DTO (Bean Validation) (400)
@@ -205,18 +162,8 @@ public class GlobalExceptionHandler {
                                                 err -> err.getDefaultMessage() != null ? err.getDefaultMessage() : "Invalid",
                                                 (a, b) -> a));
                 String message = fieldErrors.isEmpty() ? "Validasi gagal" : fieldErrors.values().iterator().next();
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.BAD_REQUEST.value(),
-                                "Validation Failed",
-                                message,
-                                request.getRequestURI(),
+                return buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Validation Failed", message, request,
                                 fieldErrors);
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(HttpStatus.BAD_REQUEST.value())
-                                .message(message)
-                                .data(error)
-                                .paging(null)
-                                .build());
         }
 
         // 6a. Handle ResponseStatusException (manual status code + message)
@@ -225,54 +172,24 @@ public class GlobalExceptionHandler {
                         HttpServletRequest request) {
                 int statusCode = ex.getStatusCode().value();
                 String message = ex.getReason() != null ? ex.getReason() : ex.getMessage();
-
-                ApiErrorResponse error = new ApiErrorResponse(
-                                statusCode,
-                                ex.getStatusCode().toString(),
-                                message,
-                                request.getRequestURI());
-
-                return ResponseEntity.status(statusCode).body(WebResponse.<ApiErrorResponse>builder()
-                                .status(statusCode)
-                                .message(message)
-                                .data(error)
-                                .paging(null)
-                                .build());
+                return buildResponse(HttpStatus.valueOf(statusCode), codeForStatus(statusCode),
+                                ex.getStatusCode().toString(), message, request, null);
         }
 
         // 7. Handle Akses Ditolak (403)
         @ExceptionHandler(AccessDeniedException.class)
-        public ResponseEntity<WebResponse<ApiErrorResponse>> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+        public ResponseEntity<WebResponse<ApiErrorResponse>> handleAccessDenied(AccessDeniedException ex,
+                        HttpServletRequest request) {
                 String message = "Akses ditolak: Anda tidak berhak melihat dokumen ini.";
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.FORBIDDEN.value(),
-                                "Forbidden",
-                                message,
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                                .body(WebResponse.<ApiErrorResponse>builder()
-                                                .status(HttpStatus.FORBIDDEN.value())
-                                                .message(message)
-                                                .data(error)
-                                                .paging(null)
-                                                .build());
+                return buildResponse(HttpStatus.FORBIDDEN, "ACCESS_DENIED", "Forbidden", message, request, null);
         }
 
         // 8. Handle Biometric Authentication Failed (401)
         @ExceptionHandler(BiometricAuthenticationException.class)
-        public ResponseEntity<WebResponse<ApiErrorResponse>> handleBiometricException(BiometricAuthenticationException ex, HttpServletRequest request) {
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.UNAUTHORIZED.value(),
-                                "Biometric Authentication Failed",
-                                ex.getMessage(),
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                                .body(WebResponse.<ApiErrorResponse>builder()
-                                                .status(HttpStatus.UNAUTHORIZED.value())
-                                                .message(ex.getMessage())
-                                                .data(error)
-                                                .paging(null)
-                                                .build());
+        public ResponseEntity<WebResponse<ApiErrorResponse>> handleBiometricException(
+                        BiometricAuthenticationException ex, HttpServletRequest request) {
+                return buildResponse(HttpStatus.UNAUTHORIZED, "BIOMETRIC_AUTH_FAILED",
+                                "Biometric Authentication Failed", ex.getMessage(), request, null);
         }
 
         // 9. Handle Semua Error Lain yang Tidak Terduga (500)
@@ -280,24 +197,51 @@ public class GlobalExceptionHandler {
         public ResponseEntity<WebResponse<ApiErrorResponse>> handleGlobalException(Exception ex,
                         HttpServletRequest request) {
                 log.error("Unexpected error at {}: {}", request.getRequestURI(), ex.getMessage(), ex);
+                return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
+                                "Internal Server Error", MSG_INTERNAL_ERROR, request, null);
+        }
 
-                String message = "Terjadi kesalahan internal pada server. Silakan hubungi admin.";
-                ApiErrorResponse error = new ApiErrorResponse(
-                                HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                                "Internal Server Error",
+        // --- Helpers ---
+
+        private ResponseEntity<WebResponse<ApiErrorResponse>> buildResponse(HttpStatus status, String code,
+                        String error, String message, HttpServletRequest request, Map<String, String> fieldErrors) {
+                ApiErrorResponse body = new ApiErrorResponse(
+                                status.value(),
+                                code,
+                                error,
                                 message,
-                                request.getRequestURI());
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                                .body(WebResponse.<ApiErrorResponse>builder()
-                                                .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                                                .message(message)
-                                                .data(error)
-                                                .paging(null)
-                                                .build());
+                                request.getRequestURI(),
+                                fieldErrors);
+                return ResponseEntity.status(status).body(WebResponse.<ApiErrorResponse>builder()
+                                .status(status.value())
+                                .message(message)
+                                .data(body)
+                                .paging(null)
+                                .build());
+        }
+
+        private String codeForStatus(int status) {
+                return switch (status) {
+                        case 400 -> "VALIDATION_ERROR";
+                        case 401 -> "UNAUTHORIZED";
+                        case 403 -> "ACCESS_DENIED";
+                        case 404 -> "NOT_FOUND";
+                        case 409 -> "CONFLICT";
+                        case 429 -> "TOO_MANY_ATTEMPTS";
+                        default -> status >= 500 ? "INTERNAL_ERROR" : null;
+                };
+        }
+
+        private String getClientIp(HttpServletRequest request) {
+                String xff = request.getHeader("X-Forwarded-For");
+                if (xff != null && !xff.isBlank()) {
+                        return xff.split(",")[0].trim();
+                }
+                return request.getRemoteAddr();
         }
 
         // --- Custom Exception Classes ---
-        
+
         public static class BiometricAuthenticationException extends RuntimeException {
                 public BiometricAuthenticationException(String message) {
                         super(message);
