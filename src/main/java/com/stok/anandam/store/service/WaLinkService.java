@@ -2,8 +2,10 @@ package com.stok.anandam.store.service;
 
 import com.stok.anandam.store.core.postgres.model.TransaksiServis;
 import com.stok.anandam.store.core.postgres.repository.TransaksiServisRepository;
+import com.stok.anandam.store.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 
 import java.net.URLEncoder;
@@ -25,15 +27,24 @@ public class WaLinkService {
     @Value("${app.tracking-url}")
     private String trackingUrl;
 
+    // Wajib transaksional: spring.jpa.open-in-view=false, sedangkan transaksi.getPelanggan()
+    // adalah relasi LAZY. Tanpa transaksi aktif akan muncul LazyInitializationException (HTTP 500).
+    @Transactional
     public String generateWaLink(UUID transaksiId, String tipePesan) {
         // 1. Cari data transaksi
         TransaksiServis transaksi = transaksiRepository.findById(transaksiId)
-                .orElseThrow(() -> new RuntimeException("Transaksi tidak ditemukan"));
+                .orElseThrow(() -> new ResourceNotFoundException("Transaksi servis dengan ID " + transaksiId + " tidak ditemukan."));
 
         // 2. Ambil data yang dibutuhkan
         String nomorHp = formatNomorHp(transaksi.getPelanggan().getNoTelepon());
         String nama = transaksi.getPelanggan().getNamaPelanggan();
         String idNota = transaksi.getId().toString();
+
+        // Data lama bisa saja belum punya tracking_token, buatkan agar link tracking tidak error
+        if (transaksi.getTrackingToken() == null) {
+            transaksi.setTrackingToken(UUID.randomUUID());
+            transaksiRepository.save(transaksi);
+        }
         String trackingToken = transaksi.getTrackingToken().toString();
         
         // Ambil data detail barang & keluhan
